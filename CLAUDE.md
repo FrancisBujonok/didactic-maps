@@ -32,7 +32,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - Zoom (decidido): tope de zoom calculado según la imagen cargada, y probar el SVG de Azgaar como base. Tiles descartados por ahora.
 - Generador (decidido): malla de Voronoi como la de Azgaar, salida vectorial, relieve por ruido, una semilla por etapa. Dibujo a mano de la silueta como agregado posterior. Generador de números propio en vez de `System.Random` para que una semilla dé siempre el mismo mapa.
 
-## Estado actual (2026-10-07)
+## Estado actual (2026-10-13)
 
 Compila sin advertencias y funciona (pines, arrastre, zoom, guardado probados).
 
@@ -43,7 +43,8 @@ Resuelto:
 
 - Tope de zoom en `doFit`: 2 para PNG/JPG, 16 para SVG, nunca menor que la escala de ajuste. Probado con ambos formatos. El autor confirmó que su SVG de Azgaar se ve perfecto: SVG es el formato recomendado para la imagen base.
 - Accesibilidad sin CSS: la fila de capa se activa con `onfocusin` y lleva `aria-current`; los controles tienen `aria-label`; los pines tienen `role="button"`, `tabindex`, `aria-pressed` y se seleccionan con Enter o Espacio.
-- README al día. Repositorio git con un commit inicial (9b88f45).
+- README al día.
+- 2026-10-13: el autor creó el repositorio de GitHub `didactic-maps` y subió el proyecto (commit 787fca7, "Cargar proyecto"). La carpeta anterior `Documents\MapaMundos` ya no se usa.
 - Dirección visual A "Carta impresa" aplicada en `app.css` (elegida por el autor): tokens en `:root`, tema claro y oscuro por `prefers-color-scheme`, Alegreya (títulos, etiquetas del mapa) y Alegreya Sans (controles) desde Google Fonts, foco visible, estados hover y activo, paneles apilados bajo 900 px. Revisado en vista previa en claro, oscuro y 700 px.
 
 Pendiente:
@@ -74,8 +75,21 @@ Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su rati
 - Cambios chicos, uno por vez, verificando con `dotnet build`.
 - Interfaz y comentarios en español, sin emojis y sin guiones largos.
 - Siempre que se pueda, dejar una parte para que la haga el autor con una consigna, y después corregirla.
-- Al terminar cada paso, actualizar este archivo.
-- Git: los commits y el push los hace el autor. Claude no hace commits ni agrega líneas de coautoría; solo propone el mensaje y los comandos.
+- Al terminar cada paso, actualizar este archivo y recordarle al autor que lo incluya en el commit.
+
+## Git y entrega
+
+El proyecto vive en el repositorio de GitHub del autor: `FrancisBujonok/didactic-maps`, carpeta local `C:\Users\franc\Documents\GitHub\didactic-maps`. Los commits y los push los hace el autor después de revisar todo. Claude no versiona nada.
+
+- Prohibido ejecutar comandos de Git que modifiquen el repositorio o su historial (`add`, `commit`, `push`, `pull`, `merge`, `rebase`, `reset`, `stash`, `config`, `init`) y cualquier comando `gh`. Permitidos, solo para leer: `git status`, `git diff`, `git log`.
+- Ninguna firma ni atribución de Claude en archivos ni mensajes: nada de "Co-Authored-By", "Generated with Claude Code" ni similares.
+- Si hay que borrar o renombrar archivos, avisar antes.
+- Al terminar cada tarea, entregar en este orden:
+  1. Lista de archivos creados, modificados y borrados, con una línea por archivo que diga qué cambió y por qué.
+  2. Solo si el autor lo pide ("pasame el archivo"): el contenido completo del archivo, sin fragmentos ni "el resto igual".
+  3. Mensaje de commit sugerido en español: primera línea de hasta 72 caracteres, más un cuerpo corto si hace falta. Si la tarea mezcla cambios sin relación, proponer varios commits y qué archivos van en cada uno.
+  4. Los comandos exactos `git add` (archivo por archivo) y `git commit -m` para copiar y ejecutar.
+  5. Una advertencia si algún archivo no debería subirse (datos personales, mundos del autor, archivos generados, claves) y qué línea agregar al `.gitignore`.
 
 ## Reglas de diseño
 
