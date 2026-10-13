@@ -1,0 +1,388 @@
+/* Mapa de Mundos - dirección visual "Carta impresa": papel cálido, tinta y un acento rojo.
+   Todo color, espacio y tamaño de letra sale de los tokens de :root. */
+
+:root {
+    color-scheme: light dark;
+
+    /* Paleta, tema claro. Contrastes sobre --panel (el peor caso):
+       texto 12.57, tenue 5.72, acento 5.72, borde 3.24. */
+    --bg: #F4EFE3;        /* papel: fondo de campos y botones */
+    --panel: #E9E2D0;     /* paneles laterales y barra */
+    --desk: #DDD5C0;      /* mesa: fondo detrás del mapa */
+    --hover: #DDD4BE;     /* fondo de un control con el mouse encima */
+    --text: #23201A;      /* tinta */
+    --muted: #5C5546;     /* texto secundario */
+    --border: #857B66;    /* bordes de controles */
+    --accent: #9C2F1F;    /* rojo de cartógrafo */
+    --on-accent: #F4EFE3; /* texto sobre el acento (6.44) */
+
+    /* Etiquetas y pines van sobre el mapa, no sobre la interfaz: no cambian con el tema. */
+    --ink: #23201A;
+    --paper: #F4EFE3;
+
+    /* Espaciado: múltiplos de 4 px */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* Tipografía */
+    --font-ui: "Alegreya Sans", "Segoe UI", sans-serif;
+    --font-title: "Alegreya", Georgia, serif;
+    --text-sm: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.5rem;
+
+    --radius: 4px;
+    --focus: 2px;      /* grosor del anillo de foco y de los bordes dobles */
+    --control: 32px;   /* alto y ancho de los controles cuadrados */
+    --pin: 20px;
+    --fast: 120ms;
+}
+
+/* Tema oscuro. Contrastes sobre --panel: texto 12.74, tenue 6.65, acento 6.25, borde 3.84. */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1A1815;
+        --panel: #25221D;
+        --desk: #121110;
+        --hover: #353028;
+        --text: #ECE6D8;
+        --muted: #B0A795;
+        --border: #857C6A;
+        --accent: #E58B74;
+        --on-accent: #1A1815; /* 6.98 */
+    }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--panel);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: var(--text-md);
+    line-height: 1.4;
+}
+
+#app { height: 100%; }
+
+h1, h2 {
+    margin: 0;
+    font-family: var(--font-title);
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+h1 { font-size: var(--text-xl); margin-bottom: var(--space-4); }
+h2 { font-size: var(--text-lg); }
+
+/* Foco con teclado: el mismo anillo en todos los controles. */
+:focus-visible {
+    outline: var(--focus) solid var(--accent);
+    outline-offset: var(--focus);
+}
+
+/* ---------- estructura: panel izquierdo | mapa | panel derecho ---------- */
+
+.app {
+    display: grid;
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 320px);
+    height: 100vh;
+}
+
+.panel {
+    background: var(--panel);
+    padding: var(--space-4);
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+}
+
+.panel-right {
+    border-right: 0;
+    border-left: 1px solid var(--border);
+}
+
+.panel-right h2 { margin-bottom: var(--space-4); }
+
+.center {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* En pantallas angostas los paneles se apilan y el mapa conserva un alto útil. */
+@media (max-width: 900px) {
+    .app {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto 70vh auto;
+        height: auto;
+    }
+
+    .panel,
+    .panel-right {
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .panel-right { border-top: 1px solid var(--border); }
+}
+
+/* ---------- controles ---------- */
+
+.field { display: block; margin-bottom: var(--space-3); }
+
+.field > span {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+input[type="text"], select, textarea {
+    width: 100%;
+    padding: var(--space-2);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    transition: border-color var(--fast), background-color var(--fast);
+}
+
+input[type="text"]:hover, select:hover, textarea:hover { border-color: var(--text); }
+
+textarea { resize: vertical; }
+
+input[type="checkbox"] {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--accent);
+    flex: none;
+}
+
+input[type="color"] {
+    width: var(--control);
+    height: var(--space-6);
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: none;
+    flex: none;
+    cursor: pointer;
+}
+
+input[type="color"]:hover { border-color: var(--text); }
+
+.btn {
+    padding: var(--space-1) var(--space-3);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--fast), border-color var(--fast), color var(--fast);
+}
+
+.btn:hover { background: var(--hover); border-color: var(--text); }
+.btn:active { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+/* Modo activo de la barra (Navegar / Colocar pines). */
+.btn.on,
+.btn.on:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.btn.small { padding: 0 var(--space-2); font-size: var(--text-sm); }
+
+.btn.danger { color: var(--accent); border-color: var(--accent); }
+.btn.danger:hover,
+.btn.danger:active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-6); }
+
+.icon-btn {
+    width: var(--space-6);
+    height: var(--space-6);
+    padding: 0;
+    background: none;
+    color: var(--muted);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font: inherit;
+    cursor: pointer;
+    flex: none;
+    transition: background-color var(--fast), border-color var(--fast), color var(--fast);
+}
+
+.icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); border-color: var(--text); }
+.icon-btn:active:not(:disabled) { background: var(--text); color: var(--bg); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+
+.muted { color: var(--muted); margin: 0; }
+.hint { color: var(--muted); font-size: var(--text-sm); margin: var(--space-3) 0; }
+
+/* ---------- capas ---------- */
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+}
+
+.layers { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.layer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background-color var(--fast), border-color var(--fast);
+}
+
+.layer:hover { background: var(--hover); }
+.layer.active { background: var(--bg); border-color: var(--accent); }
+
+.layer .layer-name { flex: 1; min-width: 0; padding: var(--space-1); }
+
+.layer .count {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    min-width: var(--space-4);
+    text-align: right;
+}
+
+/* ---------- barra de herramientas ---------- */
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.seg { display: flex; gap: var(--space-1); }
+.check { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.status { color: var(--muted); font-size: var(--text-sm); }
+.status.msg { color: var(--text); font-weight: 500; }
+
+/* ---------- mapa ---------- */
+
+.viewport {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--desk);
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+}
+
+.viewport.adding { cursor: crosshair; }
+
+/* El tamaño de .world lo da la imagen; mapview.js lo mueve y escala con transform. */
+.world {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+}
+
+.world img {
+    display: block;
+    max-width: none;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+
+.empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6);
+    text-align: center;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+/* ---------- pines ---------- */
+
+.pin {
+    position: absolute;
+    width: var(--pin);
+    height: var(--pin);
+    cursor: pointer;
+    outline: none; /* el foco se dibuja en .dot, que es lo que se ve */
+    /* centrado sobre su punto, y escala inversa para que no crezca al hacer zoom */
+    transform: translate(-50%, -50%) scale(var(--inv-scale, 1));
+}
+
+/* Borde de papel y contorno de tinta: el pin se distingue sobre cualquier color del mapa. */
+.pin .dot {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--pin-color, var(--accent));
+    border: var(--focus) solid var(--paper);
+    box-shadow: 0 0 0 1px var(--ink);
+    transition: box-shadow var(--fast);
+}
+
+.pin:hover .dot { box-shadow: 0 0 0 var(--focus) var(--ink); }
+
+.pin.selected .dot,
+.pin:focus-visible .dot {
+    box-shadow: 0 0 0 var(--focus) var(--ink), 0 0 0 var(--space-1) var(--paper), 0 0 0 calc(var(--space-1) + var(--focus)) var(--ink);
+}
+
+.pin .label {
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    margin-top: var(--space-2);
+    padding: 0 var(--space-2);
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: var(--radius);
+    font-family: var(--font-title);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ---------- aviso de error de Blazor ---------- */
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--accent);
+    color: var(--on-accent);
+    z-index: 2000;
+}
+
+#blazor-error-ui a { color: var(--on-accent); margin-left: var(--space-3); cursor: pointer; }

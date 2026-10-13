@@ -1,0 +1,467 @@
+@using System.Globalization
+@implements IAsyncDisposable
+@inject ProjectService Store
+@inject IJSRuntime JS
+
+<div class="app">
+
+    @* ===================== Panel izquierdo: proyecto y capas ===================== *@
+    <aside class="panel panel-left">
+        <h1>Mapa de Mundos</h1>
+
+        @if (!Store.Loaded)
+        {
+            <p class="muted">Cargando proyecto...</p>
+        }
+        else
+        {
+            <label class="field">
+                <span>Proyecto</span>
+                <input type="text" @bind="Store.Project.Name" @bind:event="oninput" @bind:after="OnDataChanged" />
+            </label>
+
+            <div class="btn-row">
+                <button class="btn" @onclick="LoadImageAsync">Cargar imagen</button>
+                <button class="btn" @onclick="ExportAsync">Exportar</button>
+                <button class="btn" @onclick="ImportAsync">Importar</button>
+                <button class="btn danger" @onclick="NewProjectAsync">Nuevo</button>
+            </div>
+
+            <div class="section-head">
+                <h2>Capas</h2>
+                <button class="btn small" @onclick="AddLayer">+ Capa</button>
+            </div>
+
+            <div class="layers">
+                @foreach (var layer in Store.Project.Layers)
+                {
+                    <div class="layer @(layer.Id == _activeLayerId ? "active" : "")"
+                         @key="layer.Id"
+                         aria-current="@(layer.Id == _activeLayerId ? "true" : null)"
+                         @onclick="() => _activeLayerId = layer.Id"
+                         @onfocusin="() => _activeLayerId = layer.Id">
+                        @* onfocusin: al llegar con Tab a cualquier control de la fila, la capa queda activa. *@
+                        <input type="checkbox" title="Mostrar u ocultar la capa"
+                               aria-label="Mostrar la capa @layer.Name"
+                               @bind="layer.Visible" @bind:after="OnDataChanged" />
+                        <input type="color" title="Color de los pines de esta capa"
+                               aria-label="Color de la capa @layer.Name"
+                               @bind="layer.Color" @bind:after="OnDataChanged" />
+                        <input type="text" class="layer-name" aria-label="Nombre de la capa"
+                               @bind="layer.Name" @bind:event="oninput" @bind:after="OnDataChanged" />
+                        <span class="count" title="Cantidad de pines">@PinCount(layer)</span>
+                        <button class="icon-btn" title="Subir (se dibuja encima)"
+                                aria-label="Subir la capa @layer.Name"
+                                @onclick="() => MoveLayer(layer, -1)" @onclick:stopPropagation="true">↑</button>
+                        <button class="icon-btn" title="Bajar"
+                                aria-label="Bajar la capa @layer.Name"
+                                @onclick="() => MoveLayer(layer, 1)" @onclick:stopPropagation="true">↓</button>
+                        <button class="icon-btn" title="Eliminar capa"
+                                aria-label="Eliminar la capa @layer.Name"
+                                disabled="@(Store.Project.Layers.Count == 1)"
+                                @onclick="() => RemoveLayerAsync(layer)" @onclick:stopPropagation="true">x</button>
+                    </div>
+                }
+            </div>
+
+            <p class="hint">
+                La capa resaltada recibe los pines nuevos. Las capas de arriba se dibujan sobre las de abajo.
+            </p>
+        }
+    </aside>
+
+    @* ===================== Centro: barra de herramientas y mapa ===================== *@
+    <main class="center">
+        <div class="toolbar">
+            <div class="seg">
+                <button class="btn @(_mode == Mode.Navigate ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.Navigate ? "true" : "false")"
+                        @onclick="() => _mode = Mode.Navigate">Navegar</button>
+                <button class="btn @(_mode == Mode.AddPin ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.AddPin ? "true" : "false")"
+                        @onclick="() => _mode = Mode.AddPin">Colocar pines</button>
+            </div>
+
+            <label class="check">
+                <input type="checkbox" @bind="_showLabels" /> Etiquetas
+            </label>
+
+            <button class="btn" @onclick="FitAsync">Ajustar a pantalla</button>
+
+            <span class="status">@Store.SaveStatus</span>
+            <span class="status msg">@_message</span>
+        </div>
+
+        @* Este div NO lleva atributo style: mapview.js le pone una variable CSS. *@
+        <div class="viewport @(_mode == Mode.AddPin ? "adding" : "")" @ref="_viewport">
+
+            @* .world tampoco lleva style: mapview.js lo mueve y lo escala. *@
+            <div class="world" @ref="_world">
+                @if (!string.IsNullOrEmpty(Store.ImageDataUrl))
+                {
+                    <img src="@Store.ImageDataUrl" alt="Mapa base" draggable="false" />
+                }
+
+                @if (Store.Loaded)
+                {
+                    for (var i = 0; i < Store.Project.Layers.Count; i++)
+                    {
+                        var layer = Store.Project.Layers[i];
+                        if (!layer.Visible)
+                        {
+                            continue;
+                        }
+
+                        // La primera capa de la lista queda arriba: mayor z-index.
+                        var z = Store.Project.Layers.Count - i;
+
+                        foreach (var pin in Store.Project.Pins.Where(p => p.LayerId == layer.Id))
+                        {
+                            var isSelected = pin.Id == _selectedPinId;
+
+                            <div class="pin @(isSelected ? "selected" : "")"
+                                 @key="pin.Id"
+                                 data-pin-id="@pin.Id"
+                                 style="@PinStyle(pin, layer, z, isSelected)"
+                                 role="button" tabindex="0"
+                                 aria-label="@pin.Kind: @pin.Title"
+                                 aria-pressed="@(isSelected ? "true" : "false")"
+                                 @onkeydown="e => OnPinKeyDown(e, pin.Id)"
+                                 @onclick="() => SelectPin(pin.Id)"
+                                 @onclick:stopPropagation="true">
+                                <span class="dot"></span>
+                                @if (_showLabels || isSelected)
+                                {
+                                    <span class="label">@pin.Title</span>
+                                }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+
+            @if (Store.Loaded && string.IsNullOrEmpty(Store.ImageDataUrl))
+            {
+                <div class="empty">
+                    <p>
+                        Cargá una imagen de mapa (PNG, JPG o SVG) con el botón "Cargar imagen".<br />
+                        Puede ser uno exportado desde Azgaar's Fantasy Map Generator.
+                    </p>
+                </div>
+            }
+        </div>
+    </main>
+
+    @* ===================== Panel derecho: ficha del pin ===================== *@
+    <aside class="panel panel-right">
+        @if (Store.Loaded && SelectedPin is { } selectedPin)
+        {
+            <h2>Ficha</h2>
+
+            <label class="field">
+                <span>Título</span>
+                <input type="text" @bind="selectedPin.Title" @bind:event="oninput" @bind:after="OnDataChanged" />
+            </label>
+
+            <label class="field">
+                <span>Tipo</span>
+                <select @bind="selectedPin.Kind" @bind:after="OnDataChanged">
+                    @foreach (var kind in MapPin.Kinds)
+                    {
+                        <option value="@kind">@kind</option>
+                    }
+                </select>
+            </label>
+
+            <label class="field">
+                <span>Capa</span>
+                <select @bind="selectedPin.LayerId" @bind:after="OnDataChanged">
+                    @foreach (var l in Store.Project.Layers)
+                    {
+                        <option value="@l.Id">@l.Name</option>
+                    }
+                </select>
+            </label>
+
+            <label class="field">
+                <span>Descripción</span>
+                <textarea rows="12" @bind="selectedPin.Description" @bind:event="oninput" @bind:after="OnDataChanged"></textarea>
+            </label>
+
+            <p class="hint">
+                Posición: @FormatPercent(selectedPin.X) / @FormatPercent(selectedPin.Y).
+                Arrastrá el pin en el mapa para moverlo.
+            </p>
+
+            <button class="btn danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
+        }
+        else if (Store.Loaded)
+        {
+            <p class="muted">
+                Seleccioná un pin para ver y editar su ficha, o activá "Colocar pines" y hacé clic en el mapa para crear uno.
+            </p>
+        }
+    </aside>
+</div>
+
+@code {
+    private enum Mode { Navigate, AddPin }
+
+    // Referencias a elementos del DOM que se le pasan a JavaScript.
+    private ElementReference _viewport;
+    private ElementReference _world;
+
+    private IJSObjectReference? _mapJs;
+    private DotNetObjectReference<MapEditor>? _self;
+
+    private Mode _mode = Mode.Navigate;
+    private Guid _activeLayerId;
+    private Guid? _selectedPinId;
+    private bool _showLabels = true;
+    private bool _needsFit;
+    private string _message = "";
+
+    private MapPin? SelectedPin =>
+        _selectedPinId is { } id ? Store.Project.Pins.FirstOrDefault(p => p.Id == id) : null;
+
+    private MapLayer? ActiveLayer =>
+        Store.Project.Layers.FirstOrDefault(l => l.Id == _activeLayerId);
+
+    // ------------------------------------------------------------ ciclo de vida
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.StatusChanged += OnStatusChanged;
+
+        await Store.InitAsync();
+
+        _activeLayerId = Store.Project.Layers[0].Id;
+        _needsFit = !string.IsNullOrEmpty(Store.ImageDataUrl);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Recién ahora existen los elementos del DOM, así que se le entregan a JavaScript.
+            _self = DotNetObjectReference.Create(this);
+            _mapJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/mapview.js");
+            await _mapJs.InvokeVoidAsync("init", _viewport, _world, _self);
+        }
+
+        if (_needsFit && _mapJs is not null)
+        {
+            _needsFit = false;
+            await _mapJs.InvokeVoidAsync("fit");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Store.StatusChanged -= OnStatusChanged;
+
+        if (_mapJs is not null)
+        {
+            await _mapJs.InvokeVoidAsync("dispose");
+            await _mapJs.DisposeAsync();
+        }
+
+        _self?.Dispose();
+    }
+
+    private void OnStatusChanged() => _ = InvokeAsync(StateHasChanged);
+
+    // ------------------------------------------------ llamadas desde JavaScript
+
+    /// <summary>mapview.js avisa de un clic simple sobre el mapa (x e y entre 0 y 1).</summary>
+    [JSInvokable]
+    public Task OnMapClick(double x, double y) => InvokeAsync(() =>
+    {
+        if (_mode == Mode.AddPin)
+        {
+            var layer = ActiveLayer ?? Store.Project.Layers[0];
+            layer.Visible = true; // si no, el pin nuevo quedaría invisible
+            _activeLayerId = layer.Id;
+
+            var pin = Store.AddPin(layer.Id, x, y);
+            _selectedPinId = pin.Id;
+        }
+        else
+        {
+            _selectedPinId = null;
+        }
+
+        StateHasChanged();
+    });
+
+    /// <summary>mapview.js avisa de que se terminó de arrastrar un pin.</summary>
+    [JSInvokable]
+    public Task OnPinMoved(string id, double x, double y) => InvokeAsync(() =>
+    {
+        if (Guid.TryParse(id, out var pinId))
+        {
+            Store.MovePin(pinId, x, y);
+        }
+
+        StateHasChanged();
+    });
+
+    // ------------------------------------------------------------ acciones
+
+    private void OnDataChanged() => Store.RequestSave();
+
+    private void SelectPin(Guid id) => _selectedPinId = id;
+
+    // Un div no reacciona solo a Enter o Espacio como un botón: hay que hacerlo a mano.
+    private void OnPinKeyDown(KeyboardEventArgs e, Guid id)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            SelectPin(id);
+        }
+    }
+
+    private async Task FitAsync()
+    {
+        if (_mapJs is not null)
+        {
+            await _mapJs.InvokeVoidAsync("fit");
+        }
+    }
+
+    private async Task LoadImageAsync()
+    {
+        _message = "";
+        var file = await Store.PickFileAsync("image/*", asText: false);
+        if (file is null)
+        {
+            return;
+        }
+
+        if (await Store.SetImageAsync(file))
+        {
+            _needsFit = true;
+            _message = "Imagen cargada.";
+        }
+        else
+        {
+            _message = "Ese archivo no es una imagen.";
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        await Store.ExportAsync();
+        _message = "Proyecto exportado.";
+    }
+
+    private async Task ImportAsync()
+    {
+        _message = "";
+
+        // Primero se elige el archivo y recién después se pregunta: el navegador solo
+        // permite abrir el selector de archivos justo después de un clic.
+        var file = await Store.PickFileAsync(".json,application/json", asText: true);
+        if (file is null)
+        {
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Importar \"{file.Name}\" reemplaza el proyecto actual. ¿Continuar?");
+        if (!ok)
+        {
+            return;
+        }
+
+        var (success, message) = await Store.ImportAsync(file.Content);
+        _message = message;
+
+        if (success)
+        {
+            ResetSelection();
+        }
+    }
+
+    private async Task NewProjectAsync()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "Se borra el proyecto actual (capas, pines e imagen). ¿Continuar? Conviene exportarlo antes.");
+        if (!ok)
+        {
+            return;
+        }
+
+        await Store.ResetAsync();
+        ResetSelection();
+        _message = "Proyecto nuevo.";
+    }
+
+    private void ResetSelection()
+    {
+        _selectedPinId = null;
+        _activeLayerId = Store.Project.Layers[0].Id;
+        _needsFit = !string.IsNullOrEmpty(Store.ImageDataUrl);
+    }
+
+    private void AddLayer()
+    {
+        var layer = Store.AddLayer();
+        _activeLayerId = layer.Id;
+    }
+
+    private void MoveLayer(MapLayer layer, int delta) => Store.MoveLayer(layer, delta);
+
+    private async Task RemoveLayerAsync(MapLayer layer)
+    {
+        var count = PinCount(layer);
+        var text = count == 0
+            ? $"¿Eliminar la capa \"{layer.Name}\"?"
+            : $"¿Eliminar la capa \"{layer.Name}\" y sus {count} pines?";
+
+        if (!await JS.InvokeAsync<bool>("confirm", text))
+        {
+            return;
+        }
+
+        if (SelectedPin?.LayerId == layer.Id)
+        {
+            _selectedPinId = null;
+        }
+
+        Store.RemoveLayer(layer.Id);
+
+        if (_activeLayerId == layer.Id)
+        {
+            _activeLayerId = Store.Project.Layers[0].Id;
+        }
+    }
+
+    private async Task DeletePinAsync(MapPin pin)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el pin \"{pin.Title}\"?"))
+        {
+            return;
+        }
+
+        _selectedPinId = null;
+        Store.RemovePin(pin.Id);
+    }
+
+    // ------------------------------------------------------------ ayudas de vista
+
+    private int PinCount(MapLayer layer) => Store.Project.Pins.Count(p => p.LayerId == layer.Id);
+
+    private static string FormatPercent(double value) =>
+        (value * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%";
+
+    // OJO con la cultura: en es-AR un double se escribe "12,5" y CSS necesita "12.5".
+    // Por eso se formatea siempre con InvariantCulture.
+    private static string PinStyle(MapPin pin, MapLayer layer, int z, bool isSelected)
+    {
+        var color = MapLayer.IsHexColor(layer.Color) ? layer.Color : MapLayer.DefaultColor;
+        return string.Format(CultureInfo.InvariantCulture,
+            "left:{0:0.####}%;top:{1:0.####}%;z-index:{2};--pin-color:{3};",
+            pin.X * 100, pin.Y * 100, isSelected ? z + 1000 : z, color);
+    }
+}
