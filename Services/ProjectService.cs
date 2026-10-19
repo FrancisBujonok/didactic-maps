@@ -19,6 +19,7 @@ public class ProjectService
     private IJSObjectReference? _files;   // js/files.js
     private CancellationTokenSource? _saveCts;
     private World? _world; // mundo generado en memoria (ver GetWorld)
+    private readonly Dictionary<MapView, string> _viewCache = new(); // vistas ya dibujadas (ver GetViewImage)
 
     public ProjectService(IJSRuntime js) => _js = js;
 
@@ -92,6 +93,17 @@ public class ProjectService
             .GroupBy(e => e.Cell)
             .Select(g => g.Last())
             .ToList();
+        // Reinos: color válido y cada celda en un solo reino (si se repite, gana el primero).
+        Project.Regions = (Project.Regions ?? new()).Where(r => r is not null).ToList();
+        var taken = new HashSet<int>();
+        foreach (var region in Project.Regions)
+        {
+            region.Name ??= "Reino";
+            if (!MapLayer.IsHexColor(region.Color))
+                region.Color = Region.Palette[0];
+            region.Cells = (region.Cells ?? new()).Where(c => c >= 0 && taken.Add(c)).ToList();
+        }
+
         foreach (var edit in Project.CellEdits)
         {
             if (edit.Biome is { } b && (!Enum.IsDefined(b) || !BiomeNames.Land.Contains(b)))
@@ -184,8 +196,9 @@ public class ProjectService
 
         ImageDataUrl = file.Content;
         Project.Generator = null; // la imagen ya no es la generada
-        Project.CellEdits.Clear(); // y las ediciones eran de las celdas de ese mapa
-        _world = null;
+        Project.CellEdits.Clear(); // y las ediciones y los reinos eran de las celdas de ese mapa
+        foreach (var region in Project.Regions) region.Cells.Clear();
+        SetWorld(null);
         RequestSave();
         await SaveImageAsync();
         return true;
@@ -196,7 +209,7 @@ public class ProjectService
     {
         ImageDataUrl = dataUrl;
         Project.Generator = settings;
-        _world = world;
+        SetWorld(world);
         RequestSave();
         await SaveImageAsync();
     }
@@ -235,7 +248,7 @@ public class ProjectService
                 return (false, "El archivo no contiene un proyecto válido.");
 
             Project = file.Project;
-            _world = null;
+            SetWorld(null);
             ImageDataUrl = file.ImageDataUrl is { } url &&
                            url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)
                 ? url
@@ -258,7 +271,7 @@ public class ProjectService
         _saveCts?.Cancel();
         Project = new MapProject();
         ImageDataUrl = null;
-        _world = null;
+        SetWorld(null);
         Normalize();
 
         await SaveNowAsync();
@@ -277,10 +290,18 @@ public class ProjectService
         return Project.CellEdits.Any(e => set.Contains(e.Cell));
     }
 
-    /// <summary>Borra todas las ediciones (por ejemplo, al generar un mundo con otras celdas).</summary>
-    public void ClearCellEdits()
+    /// <summary>Cuántas celdas tienen datos que dependen de la malla (ediciones o reino).</summary>
+    public int CellDataCount => Project.CellEdits.Count + Project.Regions.Sum(r => r.Cells.Count);
+
+    /// <summary>
+    /// Borra las ediciones y vacía los reinos (que se conservan con nombre y color). Se usa al
+    /// generar un mundo con otras celdas, donde esos números de celda ya no significan nada.
+    /// </summary>
+    public void ClearCellData()
     {
         Project.CellEdits.Clear();
+        foreach (var region in Project.Regions)
+            region.Cells.Clear();
         RequestSave();
     }
 
@@ -346,14 +367,101 @@ public class ProjectService
     {
         if (Project.Generator is not { } settings) return;
 
-        if (rebuild || _world is null)
-            _world = MapGenerator.Build(settings, Project.CellEdits);
-        else
-            EditStage.ApplyBiomes(_world, Project.CellEdits);
+        var world = rebuild || _world is null ? MapGenerator.Build(settings, Project.CellEdits) : _world;
+        if (!rebuild)
+            EditStage.ApplyBiomes(world, Project.CellEdits);
+        SetWorld(world); // aunque sea el mismo mundo, cambió: las vistas guardadas ya no sirven
 
-        ImageDataUrl = MapGenerator.Draw(_world, settings.Style);
+        ImageDataUrl = MapGenerator.Draw(world, settings.Style);
         RequestSave();
         await SaveImageAsync();
+    }
+
+    // ------------------------------------------------------------------ reinos
+
+    /// <summary>Crea un reino vacío con el siguiente color de la paleta.</summary>
+    public Region AddRegion()
+    {
+        var region = new Region
+        {
+            Name = $"Reino {Project.Regions.Count + 1}",
+            Color = Region.Palette[Project.Regions.Count % Region.Palette.Length]
+        };
+        Project.Regions.Add(region);
+        RegionsChanged();
+        return region;
+    }
+
+    /// <summary>Borra el reino. Sus celdas quedan sin reino; el terreno no cambia.</summary>
+    public void RemoveRegion(Guid id)
+    {
+        Project.Regions.RemoveAll(r => r.Id == id);
+        RegionsChanged();
+    }
+
+    /// <summary>
+    /// Pasa las celdas al reino indicado, o las deja sin reino si regionId es null. Primero se
+    /// sacan de cualquier otro reino, porque una celda pertenece a un reino como máximo.
+    /// Solo se asignan las celdas de tierra.
+    /// </summary>
+    public void AssignRegion(IReadOnlyCollection<int> cells, Guid? regionId)
+    {
+        var world = GetWorld();
+        if (world is null) return;
+
+        var set = cells.ToHashSet();
+        foreach (var region in Project.Regions)
+            region.Cells.RemoveAll(set.Contains);
+
+        if (Project.Regions.FirstOrDefault(r => r.Id == regionId) is { } target)
+            target.Cells.AddRange(cells.Where(world.IsLand));
+
+        RegionsChanged();
+    }
+
+    /// <summary>Reino de la celda, o null si no tiene.</summary>
+    public Region? RegionOf(int cell) => Project.Regions.FirstOrDefault(r => r.Cells.Contains(cell));
+
+    /// <summary>
+    /// Avisa que cambió algo de los reinos que se ve en el mapa (celdas o color): la vista de
+    /// reinos guardada ya no sirve. También guarda el proyecto.
+    /// </summary>
+    public void RegionsChanged()
+    {
+        _viewCache.Remove(MapView.Regions);
+        RequestSave();
+    }
+
+    // ------------------------------------------------------------------- vistas
+
+    /// <summary>True si la vista ya está dibujada (mostrarla no va a demorar).</summary>
+    public bool ViewReady(MapView view) => view == MapView.Terrain || _viewCache.ContainsKey(view);
+
+    /// <summary>
+    /// Imagen de una vista que va encima del terreno, o null para la vista de terreno (o si el
+    /// mapa no es generado). Se dibuja la primera vez que se pide y queda guardada en memoria
+    /// hasta que el mundo o los reinos cambien.
+    /// </summary>
+    public string? GetViewImage(MapView view)
+    {
+        if (view == MapView.Terrain || Project.Generator is not { } settings) return null;
+        if (_viewCache.TryGetValue(view, out var cached)) return cached;
+
+        var world = GetWorld()!;
+        var svg = view == MapView.Regions
+            ? ThematicRenderer.RenderRegions(world, Project.Regions, settings.Style)
+            : ThematicRenderer.RenderData(world, view);
+
+        var url = MapGenerator.ToDataUrl(svg);
+        _viewCache[view] = url;
+        return url;
+    }
+
+    /// <summary>Cambia el mundo en memoria y descarta las vistas dibujadas con el anterior.</summary>
+    private void SetWorld(World? world)
+    {
+        _world = world;
+        _viewCache.Clear();
     }
 
     // ------------------------------------------------------------- guardado

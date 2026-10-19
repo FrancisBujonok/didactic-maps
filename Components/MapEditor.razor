@@ -28,6 +28,7 @@
             </div>
 
             <GeneratorPanel OnGenerated="OnMapGenerated" />
+            <RegionPanel OnChanged="OnRegionsChanged" />
 
             <div class="section-head">
                 <h2>Capas</h2>
@@ -90,6 +91,18 @@
             </div>
 
             <label class="check">
+                <span>Vista</span>
+                <select value="@_view" @onchange="OnViewChangedAsync"
+                        disabled="@(Store.Project.Generator is null)"
+                        title="@(Store.Project.Generator is null ? "Solo para mapas generados" : "Qué muestra el mapa")">
+                    @foreach (var (view, name) in ThematicRenderer.Views)
+                    {
+                        <option value="@view">@name</option>
+                    }
+                </select>
+            </label>
+
+            <label class="check">
                 <input type="checkbox" @bind="_showLabels" /> Etiquetas
             </label>
 
@@ -107,6 +120,20 @@
                 @if (!string.IsNullOrEmpty(Store.ImageDataUrl))
                 {
                     <img src="@Store.ImageDataUrl" alt="Mapa base" draggable="false" />
+                }
+
+                @* La vista elegida (reinos, altura...) es otra imagen del mismo tamaño, encima del terreno. *@
+                @if (ViewImage is { } viewImage)
+                {
+                    <img class="view-layer" src="@viewImage" alt="" draggable="false" />
+                }
+
+                @if (_view == MapView.Regions && Store.WorldReady)
+                {
+                    foreach (var label in ThematicRenderer.Labels(Store.GetWorld()!, Store.Project.Regions))
+                    {
+                        <span class="region-label" style="@LabelStyle(label)">@label.Name</span>
+                    }
                 }
 
                 @* Contorno de la celda seleccionada. El SVG tiene el mismo tamaño que el mapa
@@ -157,6 +184,28 @@
                     }
                 }
             </div>
+
+            @* Leyenda: fuera de .world para que no se mueva ni se agrande con el mapa. *@
+            @if (ThematicRenderer.Legend(_view) is { } scale)
+            {
+                <div class="legend" aria-label="Leyenda">
+                    <span class="legend-title">@scale.Title</span>
+                    <span class="legend-bar" style="@LegendStyle(scale)"></span>
+                    <span class="legend-range"><span>@scale.MinLabel</span><span>@scale.MaxLabel</span></span>
+                </div>
+            }
+            else if (_view == MapView.Regions && Store.Project.Regions.Count > 0)
+            {
+                <div class="legend" aria-label="Leyenda">
+                    <span class="legend-title">Reinos</span>
+                    @foreach (var region in Store.Project.Regions)
+                    {
+                        <span class="legend-item">
+                            <span class="swatch" style="@($"background:{SafeColor(region.Color)}")"></span>@region.Name
+                        </span>
+                    }
+                </div>
+            }
 
             @if (Store.Loaded && string.IsNullOrEmpty(Store.ImageDataUrl))
             {
@@ -245,6 +294,8 @@
     private DotNetObjectReference<MapEditor>? _self;
 
     private Mode _mode = Mode.Navigate;
+    private MapView _view = MapView.Terrain;          // vista que se muestra
+    private MapView _requestedView = MapView.Terrain; // última vista elegida (puede estar preparándose)
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
     private readonly HashSet<int> _selectedCells = new(); // índices de celdas de la malla del mundo generado
@@ -407,6 +458,35 @@
     // que el editor se vuelva a dibujar con la imagen nueva.
     private void OnCellsEdited() { }
 
+    // Lo mismo para los cambios de reinos (nombres, colores): el editor vuelve a dibujar la vista.
+    private void OnRegionsChanged() { }
+
+    /// <summary>
+    /// Cambia la vista del mapa. La primera vez, dibujarla (y quizás rearmar el mundo) demora
+    /// un poco: se avisa antes, como al entrar en "Ver celdas".
+    /// </summary>
+    private async Task OnViewChangedAsync(ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<MapView>(e.Value?.ToString(), out var view)) return;
+        _requestedView = view;
+
+        if (!Store.ViewReady(view))
+        {
+            _message = "Preparando la vista...";
+            StateHasChanged();
+            await Task.Delay(1); // deja que el navegador muestre el aviso antes del trabajo pesado
+            Store.GetViewImage(view);
+            _message = "";
+        }
+
+        // Si mientras se preparaba se eligió otra vista, gana la última elegida: si no, una vista
+        // lenta que termina tarde pisaría a una rápida elegida después.
+        if (_requestedView == view)
+        {
+            _view = view;
+        }
+    }
+
     private void OnDataChanged() => Store.RequestSave();
 
     // El mapa nuevo puede tener otro tamaño que la imagen anterior: se vuelve a ajustar.
@@ -476,6 +556,7 @@
             {
                 _mode = Mode.Navigate; // una imagen cargada no tiene celdas
             }
+            _view = _requestedView = MapView.Terrain; // ni vistas de datos
             _message = "Imagen cargada.";
         }
         else
@@ -539,10 +620,11 @@
         _activeLayerId = Store.Project.Layers[0].Id;
         _needsFit = !string.IsNullOrEmpty(Store.ImageDataUrl);
 
-        // Sin mapa generado no hay celdas que ver.
-        if (_mode == Mode.Inspect && Store.Project.Generator is null)
+        // Sin mapa generado no hay celdas ni vistas que ver.
+        if (Store.Project.Generator is null)
         {
-            _mode = Mode.Navigate;
+            if (_mode == Mode.Inspect) _mode = Mode.Navigate;
+            _view = _requestedView = MapView.Terrain;
         }
     }
 
@@ -624,6 +706,21 @@
     }
 
     private static string F(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    /// <summary>Imagen de la vista elegida para poner encima del terreno, o null en la vista de terreno.</summary>
+    private string? ViewImage => _view == MapView.Terrain ? null : Store.GetViewImage(_view);
+
+    // Las etiquetas de reino se ubican como los pines: en porcentaje y con escala inversa.
+    private static string LabelStyle(RegionLabel label) => string.Format(CultureInfo.InvariantCulture,
+        "left:{0:0.####}%;top:{1:0.####}%;", label.X * 100, label.Y * 100);
+
+    // La barra de la leyenda usa los mismos colores que la escala de la vista.
+    private static string LegendStyle(ColorScale scale) =>
+        $"background:linear-gradient(to right, {string.Join(", ", scale.Stops)});";
+
+    // El color de un reino viene del proyecto (y de archivos importados): se valida antes de
+    // ponerlo en un atributo style, igual que el color de las capas.
+    private static string SafeColor(string color) => MapLayer.IsHexColor(color) ? color : Region.Palette[0];
 
     private static string FormatPercent(double value) =>
         (value * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%";

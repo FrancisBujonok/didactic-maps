@@ -15,6 +15,9 @@
 
     @if (World.IsLand(Cell))
     {
+        <dt>Reino</dt>
+        <dd>@(RegionName ?? "Sin reino")</dd>
+
         <dt>Humedad</dt>
         <dd>@Number(World.Moisture[Cell] * 100) %</dd>
 
@@ -33,6 +36,9 @@
 
     /// <summary>Índice de la celda en la malla.</summary>
     [Parameter, EditorRequired] public int Cell { get; set; }
+
+    /// <summary>Nombre del reino de la celda, o null si no tiene.</summary>
+    [Parameter] public string? RegionName { get; set; }
 
     private string RiverText => World.RiverSize(Cell) switch
     {

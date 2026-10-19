@@ -237,17 +237,22 @@ input[type="color"]:hover { border-color: var(--text); }
 .muted { color: var(--muted); margin: 0; }
 .hint { color: var(--muted); font-size: var(--text-sm); margin: var(--space-3) 0; }
 
-/* ---------- generador ---------- */
+/* ---------- secciones desplegables (generador, reinos) ---------- */
 
-.generator {
-    margin-bottom: var(--space-6);
+/* Secciones apiladas separadas por una línea; la última se separa de "Capas" con otra. */
+.fold {
     border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
     padding: var(--space-2) 0;
 }
 
+.fold + .section-head {
+    margin-top: 0;
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
 /* El título desplegable se ve como los demás encabezados y cambia de color al pasar el mouse. */
-.generator summary {
+.fold summary {
     font-family: var(--font-title);
     font-size: var(--text-lg);
     font-weight: 700;
@@ -256,8 +261,10 @@ input[type="color"]:hover { border-color: var(--text); }
     transition: color var(--fast);
 }
 
-.generator summary:hover { color: var(--accent); }
-.generator[open] summary { margin-bottom: var(--space-2); }
+.fold summary:hover { color: var(--accent); }
+.fold[open] summary { margin-bottom: var(--space-2); }
+
+/* ---------- generador ---------- */
 
 /* Fila de semilla: nombre | número | botón "Otra". */
 .seed-row {
@@ -271,7 +278,8 @@ input[type="color"]:hover { border-color: var(--text); }
 .seed-row label { color: var(--muted); font-size: var(--text-sm); }
 .seed-row input { padding: var(--space-1) var(--space-2); }
 
-.generator .btn:disabled { opacity: .5; cursor: progress; }
+.btn:disabled,
+.btn:disabled:hover { opacity: .5; cursor: default; background: var(--bg); border-color: var(--border); }
 
 input[type="range"] {
     width: 100%;
@@ -348,6 +356,7 @@ input[type="range"] {
 
 .seg { display: flex; gap: var(--space-1); }
 .check { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.check select { width: auto; padding: var(--space-1) var(--space-2); }
 .status { color: var(--muted); font-size: var(--text-sm); }
 .status.msg { color: var(--text); font-weight: 500; }
 
@@ -365,6 +374,61 @@ input[type="range"] {
 }
 
 .viewport.adding { cursor: crosshair; }
+
+/* La vista elegida (reinos, altura...) tapa exactamente la imagen base: mismo tamaño y lugar. */
+.world img.view-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Nombre de reino, como en un atlas: mayúsculas espaciadas en tinta con un halo de papel
+   para leerse sobre cualquier color. Escala inversa: no crece con el zoom. */
+.region-label {
+    position: absolute;
+    transform: translate(-50%, -50%) scale(var(--inv-scale, 1));
+    font-family: var(--font-title);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--ink);
+    text-shadow: 0 0 var(--space-1) var(--paper), 0 0 var(--space-1) var(--paper);
+    pointer-events: none;
+}
+
+/* Leyenda de la vista, fija en la esquina del visor. */
+.legend {
+    position: absolute;
+    left: var(--space-3);
+    bottom: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: calc(var(--space-8) * 6);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    pointer-events: none;
+}
+
+.legend-title { font-family: var(--font-title); font-weight: 700; }
+.legend-bar { height: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.legend-range { display: flex; justify-content: space-between; color: var(--muted); }
+.legend-item { display: flex; align-items: center; gap: var(--space-2); }
+
+.swatch {
+    width: var(--space-3);
+    height: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    flex: none;
+}
 .viewport.inspecting { cursor: cell; }
 
 /* Contorno de la celda seleccionada: mismo tamaño que el mapa, encima de la imagen y debajo

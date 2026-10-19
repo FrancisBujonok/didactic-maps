@@ -1,0 +1,87 @@
+@inject ProjectService Store
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Lista de reinos del mapa generado: crear, renombrar, cambiar el color y borrar.
+   Las celdas se asignan desde el panel derecho, con las celdas seleccionadas. *@
+<details class="fold">
+    <summary>Reinos</summary>
+
+    @if (Store.Project.Generator is null)
+    {
+        <p class="hint">Generá un mapa para crear reinos.</p>
+    }
+    else
+    {
+        <p class="hint">
+            Elegí celdas con "Ver celdas" y asignalas a un reino desde el panel derecho.
+            Para verlos en el mapa, usá la vista "Reinos".
+        </p>
+
+        <div class="layers">
+            @foreach (var region in Store.Project.Regions)
+            {
+                <div class="layer" @key="region.Id">
+                    <input type="color" title="Color del reino" aria-label="Color de @region.Name"
+                           @bind="region.Color" @bind:after="OnColorChangedAsync" />
+                    <input type="text" class="layer-name" aria-label="Nombre del reino"
+                           @bind="region.Name" @bind:event="oninput" @bind:after="OnNameChangedAsync" />
+                    <span class="count" title="Celdas del reino">@region.Cells.Count</span>
+                    <button class="icon-btn" title="Eliminar reino" aria-label="Eliminar @region.Name"
+                            @onclick="() => RemoveAsync(region)">x</button>
+                </div>
+            }
+        </div>
+
+        <div class="btn-row">
+            <button class="btn small" @onclick="AddAsync">+ Reino</button>
+        </div>
+    }
+</details>
+
+@code {
+    /// <summary>
+    /// Se dispara al cambiar algo que se ve en el mapa (nombres, colores, reinos), para que el
+    /// editor vuelva a dibujar la vista de reinos y sus nombres.
+    /// </summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    // Las celdas se asignan desde otro panel. Cada vez que el proyecto se guarda, el servicio
+    // avisa, y esta lista se vuelve a dibujar con las cantidades al día.
+    protected override void OnInitialized() => Store.StatusChanged += OnStoreChanged;
+
+    public void Dispose() => Store.StatusChanged -= OnStoreChanged;
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task AddAsync()
+    {
+        Store.AddRegion();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task RemoveAsync(Region region)
+    {
+        var text = region.Cells.Count == 0
+            ? $"¿Eliminar el reino \"{region.Name}\"?"
+            : $"¿Eliminar el reino \"{region.Name}\"? Sus {region.Cells.Count} celdas quedan sin reino; el terreno no cambia.";
+        if (!await JS.InvokeAsync<bool>("confirm", text)) return;
+
+        Store.RemoveRegion(region.Id);
+        await OnChanged.InvokeAsync();
+    }
+
+    // El color se ve en el dibujo de la vista: hay que redibujarla.
+    private async Task OnColorChangedAsync()
+    {
+        Store.RegionsChanged();
+        await OnChanged.InvokeAsync();
+    }
+
+    // El nombre solo está en las etiquetas (texto HTML), no en el dibujo: alcanza con guardar.
+    private async Task OnNameChangedAsync()
+    {
+        Store.RequestSave();
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -6,7 +6,7 @@
 
 @* Panel para generar un mapa al azar. Edita una copia de los parámetros y solo la guarda
    en el proyecto cuando se genera, junto con la imagen. *@
-<details class="generator">
+<details class="fold">
     <summary>Generar mapa</summary>
 
     <p class="hint">Cada etapa tiene su semilla: si cambiás una, las anteriores quedan igual.</p>
@@ -140,18 +140,19 @@
             return;
         }
 
-        // Las ediciones a mano apuntan a celdas por número. Si cambia la semilla del continente
-        // o el detalle, las celdas son otras y las ediciones quedarían en lugares al azar.
-        var edits = Store.Project.CellEdits.Count;
+        // Las ediciones a mano y los reinos apuntan a celdas por número. Si cambia la semilla del
+        // continente o el detalle, las celdas son otras y quedarían en lugares al azar.
+        var cellData = Store.CellDataCount;
         var previous = Store.Project.Generator;
-        if (edits > 0 && previous is not null && MapGenerator.ChangesMesh(previous, settings))
+        if (cellData > 0 && previous is not null && MapGenerator.ChangesMesh(previous, settings))
         {
             if (!await JS.InvokeAsync<bool>("confirm",
-                    $"Cambia la forma del mundo: se pierden los cambios a mano de {edits} celdas. ¿Continuar?"))
+                    "Cambia la forma del mundo: se pierden los cambios a mano y los reinos quedan sin celdas " +
+                    "(se conservan sus nombres y colores). ¿Continuar?"))
             {
                 return;
             }
-            Store.ClearCellEdits();
+            Store.ClearCellData();
         }
 
         _settings = settings.Clone();

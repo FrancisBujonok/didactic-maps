@@ -15,6 +15,9 @@ public class MapProject
 
     /// <summary>Cambios hechos a mano sobre celdas del mapa generado (ver CellEdit).</summary>
     public List<CellEdit> CellEdits { get; set; } = new();
+
+    /// <summary>Reinos o regiones del mapa generado (ver Region).</summary>
+    public List<Region> Regions { get; set; } = new();
 }
 
 /// <summary>

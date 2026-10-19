@@ -20,16 +20,16 @@ namespace MapaMundos.Generation;
 public static class SvgMapRenderer
 {
     // Colores de mapa impreso: apagados para que los pines y etiquetas resalten encima.
-    private const string DeepSea = "#9DBDCB";
+    internal const string DeepSea = "#9DBDCB";
     private const string MidSea = "#B1CCD6";
     private const string ShallowSea = "#C6DBE1";
     private const string LakeWater = "#B9D3DB";
     private const string RiverWater = "#4E7C9B";
-    private const string Ink = "#23201A";
+    internal const string Ink = "#23201A";
     private const string Shadow = "#3B3226"; // hacia este color se oscurece la tierra alta
 
     // Veces que se suaviza cada línea. Cada pasada duplica los puntos; con 2 ya no se ven esquinas.
-    private const int SmoothPasses = 2;
+    internal const int SmoothPasses = 2;
 
     private static readonly Dictionary<Biome, string> BiomeColors = new()
     {
@@ -159,7 +159,7 @@ public static class SvgMapRenderer
     /// se juntan 3 celdas, así que por cada vértice de la costa sale exactamente un lado:
     /// buscando el lado que sale de donde terminó el anterior se recorre el contorno entero.
     /// </summary>
-    private static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(World world, int passes)
+    internal static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(World world, int passes)
     {
         var mesh = world.Mesh;
         var sides = new Dictionary<(long, long), ((double X, double Y) To, bool Lake)>();
@@ -354,7 +354,7 @@ public static class SvgMapRenderer
 
     // ------------------------------------------------------------- utilidades
 
-    private static string ClosedPath(List<List<(double X, double Y)>> loops)
+    internal static string ClosedPath(List<List<(double X, double Y)>> loops)
     {
         var d = new StringBuilder();
         foreach (var loop in loops)
@@ -374,7 +374,7 @@ public static class SvgMapRenderer
             d.Append('L').Append(F(line[k].X)).Append(' ').Append(F(line[k].Y));
     }
 
-    private static void AppendStroke(StringBuilder svg, string d, string color, double width)
+    internal static void AppendStroke(StringBuilder svg, string d, string color, double width)
     {
         if (d.Length == 0) return;
         svg.Append(CultureInfo.InvariantCulture,
@@ -385,7 +385,7 @@ public static class SvgMapRenderer
         (a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
 
     /// <summary>Mezcla dos colores "#rrggbb": amount 0 devuelve a, 1 devuelve b.</summary>
-    private static string Mix(string a, string b, double amount)
+    internal static string Mix(string a, string b, double amount)
     {
         int Channel(string hex, int index) => Convert.ToInt32(hex.Substring(1 + index * 2, 2), 16);
 
@@ -400,5 +400,5 @@ public static class SvgMapRenderer
 
     // Un decimal alcanza: a 16x de zoom, 0.1 px de imagen son 1.6 px de pantalla.
     // InvariantCulture porque en es-AR el separador decimal es la coma y SVG necesita punto.
-    private static string F(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
+    internal static string F(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 }

@@ -44,11 +44,14 @@ public static class MapGenerator
     }
 
     /// <summary>Dibuja un mundo ya armado y lo devuelve como data URL.</summary>
-    public static string Draw(World world, MapStyle style)
-    {
-        var svg = SvgMapRenderer.Render(world, style);
-        return "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
-    }
+    public static string Draw(World world, MapStyle style) => ToDataUrl(SvgMapRenderer.Render(world, style));
+
+    /// <summary>
+    /// Convierte el texto de un SVG en un data URL ("data:image/svg+xml;base64,..."), que se
+    /// puede usar directamente como src de una imagen y guardar como texto.
+    /// </summary>
+    public static string ToDataUrl(string svg) =>
+        "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
 
     /// <summary>
     /// True si con estos parámetros la malla sale distinta (otras celdas): entonces las

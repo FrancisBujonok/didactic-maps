@@ -6,7 +6,7 @@
 
 @if (Cells.Count == 1)
 {
-    <CellInfo World="World" Cell="Cells.First()" />
+    <CellInfo World="World" Cell="Cells.First()" RegionName="@Store.RegionOf(Cells.First())?.Name" />
 }
 else
 {
@@ -34,6 +34,25 @@ else
 @if (LandCount < Cells.Count)
 {
     <p class="hint">El terreno solo cambia en las celdas de tierra.</p>
+}
+
+<h3>Reino</h3>
+@if (Store.Project.Regions.Count == 0)
+{
+    <p class="hint">Creá un reino en el panel izquierdo para asignarle celdas.</p>
+}
+else
+{
+    <div class="tool-row">
+        <select @bind="_regionId" aria-label="Reino para las celdas">
+            @foreach (var region in Store.Project.Regions)
+            {
+                <option value="@region.Id">@region.Name</option>
+            }
+            <option value="">Sin reino</option>
+        </select>
+        <button class="btn" disabled="@(_busy || LandCount == 0)" @onclick="AssignRegionAsync">Asignar</button>
+    </div>
 }
 
 <h3>Altura</h3>
@@ -75,7 +94,28 @@ else
     private bool _busy;
     private string? _status;
 
+    // Reino elegido en el selector: el Id como texto, o "" para "Sin reino". Null hasta que se
+    // elige uno; entonces se propone el reino de la primera celda o, si no tiene, el primero.
+    private string? _regionId;
+
     private int LandCount => Cells.Count(World.IsLand);
+
+    protected override void OnParametersSet()
+    {
+        var exists = _regionId == "" || Store.Project.Regions.Any(r => r.Id.ToString() == _regionId);
+        if (_regionId is null || !exists)
+        {
+            var region = Store.RegionOf(Cells.First()) ?? Store.Project.Regions.FirstOrDefault();
+            _regionId = region?.Id.ToString() ?? "";
+        }
+    }
+
+    // Asignar un reino no cambia el terreno: es inmediato, no hace falta el aviso "Aplicando...".
+    private async Task AssignRegionAsync()
+    {
+        Store.AssignRegion(Selection, Guid.TryParse(_regionId, out var id) ? id : null);
+        await OnEdited.InvokeAsync();
+    }
 
     /// <summary>
     /// Ejecuta una edición mostrando "Aplicando..." mientras tanto. Recibe una función que crea
