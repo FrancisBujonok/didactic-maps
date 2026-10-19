@@ -81,6 +81,8 @@ public class ProjectService
             pin.X = Math.Clamp(pin.X, 0, 1);
             pin.Y = Math.Clamp(pin.Y, 0, 1);
         }
+
+        Project.Generator?.Normalize();
     }
 
     // ---------------------------------------------------------------- capas
@@ -167,8 +169,19 @@ public class ProjectService
             return false;
 
         ImageDataUrl = file.Content;
+        Project.Generator = null; // la imagen ya no es la generada
+        RequestSave();
         await SaveImageAsync();
         return true;
+    }
+
+    /// <summary>Usa un mapa generado como imagen base y guarda con qué parámetros se hizo.</summary>
+    public async Task SetGeneratedImageAsync(string dataUrl, GeneratorSettings settings)
+    {
+        ImageDataUrl = dataUrl;
+        Project.Generator = settings;
+        RequestSave();
+        await SaveImageAsync();
     }
 
     public async Task ExportAsync()

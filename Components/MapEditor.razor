@@ -27,6 +27,8 @@
                 <button class="btn danger" @onclick="NewProjectAsync">Nuevo</button>
             </div>
 
+            <GeneratorPanel OnGenerated="OnMapGenerated" />
+
             <div class="section-head">
                 <h2>Capas</h2>
                 <button class="btn small" @onclick="AddLayer">+ Capa</button>
@@ -144,8 +146,8 @@
             {
                 <div class="empty">
                     <p>
-                        Cargá una imagen de mapa (PNG, JPG o SVG) con el botón "Cargar imagen".<br />
-                        Puede ser uno exportado desde Azgaar's Fantasy Map Generator.
+                        Cargá una imagen de mapa (PNG, JPG o SVG) con el botón "Cargar imagen",<br />
+                        por ejemplo una exportada desde Azgaar, o creá una con "Generar mapa".
                     </p>
                 </div>
             }
@@ -309,6 +311,9 @@
     // ------------------------------------------------------------ acciones
 
     private void OnDataChanged() => Store.RequestSave();
+
+    // El mapa nuevo puede tener otro tamaño que la imagen anterior: se vuelve a ajustar.
+    private void OnMapGenerated() => _needsFit = true;
 
     private void SelectPin(Guid id) => _selectedPinId = id;
 

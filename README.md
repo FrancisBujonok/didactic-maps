@@ -16,12 +16,15 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 4. Creá otra capa, cambiale el color y ocultala con su casilla.
 5. Recargá la página: todo sigue ahí (se guarda en IndexedDB).
 6. "Exportar" genera un `.mundo.json` con todo, imagen incluida. "Importar" lo vuelve a cargar.
+7. En "Generar mapa", "Todo al azar" crea un continente nuevo. Cambiá una sola semilla y volvé a "Generar" para ver qué controla cada etapa.
 
 ## Cómo está organizado
 
 - `Models/`: los datos (`MapProject`, `MapLayer`, `MapPin`) y el formato del archivo exportado.
 - `Services/ProjectService.cs`: guarda el proyecto abierto y se encarga de persistir, exportar e importar.
-- `Components/MapEditor.razor`: toda la interfaz (paneles, capas, ficha, pines).
+- `Components/MapEditor.razor`: la interfaz principal (paneles, capas, ficha, pines).
+- `Components/GeneratorPanel.razor`: el panel "Generar mapa".
+- `Generation/`: el generador de mapas, una clase por etapa (malla, continente, clima, ríos, biomas) y el dibujo en SVG.
 - `wwwroot/js/mapview.js`: zoom, arrastre y clics sobre el mapa.
 - `wwwroot/js/storage.js` y `files.js`: IndexedDB y selector/descarga de archivos.
 
@@ -45,4 +48,4 @@ Decisiones de diseño que conviene entender:
 
 - Importar los CSV/GeoJSON de Azgaar para crear pines automáticamente (primero hay que exportar uno y mirar sus columnas).
 - Vincular cada pin con una ficha del mundo (wiki) en lugar de una descripción suelta.
-- Generador de mapas por etapas (continente, clima, ríos, biomas).
+- Generador: sombra de lluvia, nombres de lugares y generación sin congelar la interfaz.

@@ -1,0 +1,139 @@
+@using System.Diagnostics
+@using MapaMundos.Generation
+@inject ProjectService Store
+@inject IJSRuntime JS
+
+@* Panel para generar un mapa al azar. Edita una copia de los parámetros y solo la guarda
+   en el proyecto cuando se genera, junto con la imagen. *@
+<details class="generator">
+    <summary>Generar mapa</summary>
+
+    <p class="hint">Cada etapa tiene su semilla: si cambiás una, las anteriores quedan igual.</p>
+
+    @foreach (var seed in Seeds)
+    {
+        <div class="seed-row" @key="seed.Id">
+            <label for="semilla-@seed.Id" title="@seed.Help">@seed.Label</label>
+            <input id="semilla-@seed.Id" type="number" min="1" max="999999"
+                   value="@seed.Get()" @onchange="e => SetSeed(seed, e)" />
+            <button class="btn small" disabled="@_busy"
+                    aria-label="Otra semilla para @seed.Label"
+                    @onclick="() => seed.Set(GeneratorSettings.NewSeed())">Otra</button>
+        </div>
+    }
+
+    <label class="field">
+        <span>Tierra: @LandPercent %</span>
+        <input type="range" min="20" max="70" step="5"
+               @bind="LandPercent" @bind:event="oninput" />
+    </label>
+
+    <label class="field">
+        <span>Detalle</span>
+        <select @bind="_settings.CellSize">
+            @foreach (var (size, name) in GeneratorSettings.DetailLevels)
+            {
+                <option value="@size">@name</option>
+            }
+        </select>
+    </label>
+
+    <div class="btn-row">
+        <button class="btn" disabled="@_busy" @onclick="GenerateAsync">Generar</button>
+        <button class="btn" disabled="@_busy" @onclick="RandomizeAsync">Todo al azar</button>
+    </div>
+
+    <p class="hint" role="status">@(_status ?? "Reemplaza la imagen base. Los pines se mantienen.")</p>
+</details>
+
+@code {
+    /// <summary>Se dispara al terminar de generar, para que el editor ajuste el mapa a la pantalla.</summary>
+    [Parameter] public EventCallback OnGenerated { get; set; }
+
+    // Una fila de semilla: nombre visible, ayuda y cómo leer y escribir el valor en _settings.
+    private sealed record SeedRow(string Id, string Label, string Help, Func<int> Get, Action<int> Set);
+
+    private GeneratorSettings _settings = GeneratorSettings.CreateRandom();
+    private MapProject? _project;
+    private bool _busy;
+    private string? _status;
+
+    private SeedRow[] Seeds => new SeedRow[]
+    {
+        new("continente", "Continente", "Forma de la tierra y relieve",
+            () => _settings.ContinentSeed, v => _settings.ContinentSeed = v),
+        new("clima", "Clima", "Latitud y manchas de humedad",
+            () => _settings.ClimateSeed, v => _settings.ClimateSeed = v),
+        new("rios", "Ríos", "Variación de la lluvia que alimenta los ríos",
+            () => _settings.RiverSeed, v => _settings.RiverSeed = v),
+        new("biomas", "Biomas", "Irregularidad de los límites entre biomas",
+            () => _settings.BiomeSeed, v => _settings.BiomeSeed = v),
+    };
+
+    private int LandPercent
+    {
+        get => (int)Math.Round(_settings.LandRatio * 100);
+        set => _settings.LandRatio = value / 100.0;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Si se importó otro proyecto o se empezó uno nuevo, se muestran sus parámetros.
+        if (!ReferenceEquals(_project, Store.Project))
+        {
+            _project = Store.Project;
+            _settings = _project.Generator?.Clone() ?? GeneratorSettings.CreateRandom();
+            _status = null;
+        }
+    }
+
+    private static void SetSeed(SeedRow seed, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value))
+            seed.Set(Math.Clamp(value, 1, 999_999));
+    }
+
+    private async Task RandomizeAsync()
+    {
+        var random = GeneratorSettings.CreateRandom();
+        random.LandRatio = _settings.LandRatio;
+        random.CellSize = _settings.CellSize;
+        _settings = random;
+        await GenerateAsync();
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (_busy) return;
+
+        // Si la imagen actual vino de un archivo, se pregunta antes de reemplazarla.
+        if (Store.ImageDataUrl is not null && Store.Project.Generator is null &&
+            !await JS.InvokeAsync<bool>("confirm", "El mapa generado reemplaza la imagen base actual. Los pines se mantienen. ¿Continuar?"))
+        {
+            return;
+        }
+
+        _busy = true;
+        _status = "Generando...";
+        StateHasChanged();
+
+        // Generar es trabajo pesado y sin pausas: esta espera corta le da al navegador
+        // la oportunidad de mostrar "Generando..." antes de empezar.
+        await Task.Delay(1);
+
+        try
+        {
+            var watch = Stopwatch.StartNew();
+            var settings = _settings.Clone();
+            var dataUrl = MapGenerator.GenerateDataUrl(settings);
+            await Store.SetGeneratedImageAsync(dataUrl, settings);
+            _status = $"Mapa generado en {watch.Elapsed.TotalSeconds:0.0} s.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await OnGenerated.InvokeAsync();
+    }
+}

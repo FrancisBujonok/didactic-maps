@@ -14,7 +14,15 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 
 - `Models/`: `MapProject`, `MapLayer`, `MapPin` (MapProject.cs) y `ProjectFile`, `PickedFile` (ProjectFile.cs).
 - `Services/ProjectService.cs`: estado del proyecto abierto, guardado con debounce de 400 ms, import/export.
-- `Components/MapEditor.razor`: toda la interfaz (panel de capas, barra, mapa, ficha del pin).
+- `Components/MapEditor.razor`: interfaz principal (panel de capas, barra, mapa, ficha del pin).
+- `Components/GeneratorPanel.razor`: panel "Generar mapa" (semillas, tierra, detalle). Edita una copia de `GeneratorSettings` y la guarda al generar.
+- `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra y tamaño de celda. Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
+- `Generation/`: el generador, en orden de ejecución:
+  - `Rng.cs` (Mulberry32 con semilla), `PerlinNoise.cs` (ruido y fBm).
+  - `Mesh.cs`: grilla hexagonal con puntos desplazados, vecinas fijas por fila y columna, polígonos con baricentros, BFS `Distances`.
+  - `World.cs`: un arreglo por dato y por celda (altura, agua, lago, clima, drenaje, caudal, bioma).
+  - `ReliefStage.cs`, `ClimateStage.cs`, `RiverStage.cs`, `BiomeStage.cs`: una etapa por archivo, cada una con su semilla.
+  - `SvgMapRenderer.cs`: dibujo en SVG. `MapGenerator.cs`: orquesta todo y devuelve el data URL.
 - `wwwroot/js/mapview.js`: zoom, pan, clics y arrastre de pines.
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
 - `wwwroot/js/files.js`: selector de archivos y descarga.
@@ -30,9 +38,17 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - Los números que van a CSS se formatean con `InvariantCulture` (en es-AR el decimal es coma).
 - Los SVG se muestran con `<img>`, nunca incrustados en el DOM (así no ejecutan scripts).
 - Zoom (decidido): tope de zoom calculado según la imagen cargada, y probar el SVG de Azgaar como base. Tiles descartados por ahora.
-- Generador (decidido): malla de Voronoi como la de Azgaar, salida vectorial, relieve por ruido, una semilla por etapa. Dibujo a mano de la silueta como agregado posterior. Generador de números propio en vez de `System.Random` para que una semilla dé siempre el mismo mapa.
+- Generador (decidido): malla de celdas irregulares, salida vectorial, relieve por ruido, una semilla por etapa. Dibujo a mano de la silueta como agregado posterior. Generador de números propio en vez de `System.Random` para que una semilla dé siempre el mismo mapa.
+- Generador (implementado así):
+  - Malla hexagonal desplazada (máximo 0.25 de la separación) en vez de Delaunay: vecinas conocidas sin algoritmo de triangulación. Polígono de celda = baricentros de sus 6 triángulos. Con desplazamiento mayor a 0.3 los triángulos se pueden dar vuelta.
+  - El mapa generado es un SVG de 2000 x 1250 que se usa como imagen base (data URL), así reutiliza zoom, guardado y exportación.
+  - Nivel del mar por cuantil: el porcentaje de tierra se cumple siempre. Caída extra con potencia 8 cerca de los bordes para que la tierra no quede cortada.
+  - Ríos con "priority flood": cada celda drena hacia la celda desde la que la alcanzó la inundación; caudal acumulado en orden inverso. Umbral de río proporcional a la tierra (`CatchmentFraction`).
+  - Dibujo: costa y orillas encadenadas en contornos y suavizadas con Chaikin (2 pasadas); la tierra se recorta con ese contorno (`clipPath`, `evenodd` para los lagos) y se desenfoca (`feGaussianBlur`) para ocultar los hexágonos. El mar costero son trazos anchos de la costa. Los afluentes terminan en el punto medio de un tramo del río principal porque Chaikin conserva esos puntos.
+  - Colores del mapa fijos (no dependen del tema), apagados para que resalten pines y etiquetas.
+  - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
 
-## Estado actual (2026-10-13)
+## Estado actual (2026-10-19)
 
 Compila sin advertencias y funciona (pines, arrastre, zoom, guardado probados).
 
@@ -47,8 +63,12 @@ Resuelto:
 - 2026-10-13: el autor creó el repositorio de GitHub `didactic-maps` y subió el proyecto (commit 787fca7, "Cargar proyecto"). La carpeta anterior `Documents\MapaMundos` ya no se usa.
 - Dirección visual A "Carta impresa" aplicada en `app.css` (elegida por el autor): tokens en `:root`, tema claro y oscuro por `prefers-color-scheme`, Alegreya (títulos, etiquetas del mapa) y Alegreya Sans (controles) desde Google Fonts, foco visible, estados hover y activo, paneles apilados bajo 900 px. Revisado en vista previa en claro, oscuro y 700 px.
 
+- 2026-10-19: generador de mapas al azar (pedido por el autor antes que el resto de la hoja de ruta). Probado: diez semillas sin tierra en el borde, 40 % de tierra exacto, 16 a 34 desembocaduras, biomas variados según latitud. En el navegador (Debug) tarda unos 3 s con detalle medio y pesa unos 600 KB.
+
 Pendiente:
 
+- Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.
+- Generador: sombra de lluvia, nombres de lugares, símbolos de montaña. Ejercicio del autor: bioma "Pantano" en `BiomeStage.Classify`.
 - Íconos SVG propios por tipo de pin (hoy todos son un círculo).
 - Botón para elegir tema a mano (hoy sigue al sistema). Tipografías locales si se quiere usar sin conexión.
 - Imagen como data URL: pesada en memoria y en interop para mapas grandes. Pasarla a Blob mueve parte del import/export a JS; esperar a que el autor diga si su SVG real tarda en cargar.
@@ -67,7 +87,7 @@ Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su rati
 0. Corregir los problemas de la revisión inicial. Falta: íconos de pin y decidir lo del Blob.
 1. Importador de Azgaar (CSV/GeoJSON de ciudades a pines). Falta el archivo de ejemplo en `/ejemplos`.
 2. Vincular pines con fichas de un wiki del mundo.
-3. Generador de mapas por etapas (continente, clima, ríos, biomas), cada etapa con su semilla.
+3. Generador de mapas por etapas (continente, clima, ríos, biomas), cada etapa con su semilla. Primera versión hecha el 2026-10-19; quedan mejoras (ver Pendiente).
 
 ## Forma de trabajo
 

@@ -9,6 +9,9 @@ public class MapProject
     public string Name { get; set; } = "Mi mundo";
     public List<MapLayer> Layers { get; set; } = new();
     public List<MapPin> Pins { get; set; } = new();
+
+    /// <summary>Parámetros con los que se generó la imagen base, o null si la imagen se cargó de un archivo.</summary>
+    public GeneratorSettings? Generator { get; set; }
 }
 
 /// <summary>

@@ -146,7 +146,7 @@ h2 { font-size: var(--text-lg); }
     font-size: var(--text-sm);
 }
 
-input[type="text"], select, textarea {
+input[type="text"], input[type="number"], select, textarea {
     width: 100%;
     padding: var(--space-2);
     background: var(--bg);
@@ -157,7 +157,7 @@ input[type="text"], select, textarea {
     transition: border-color var(--fast), background-color var(--fast);
 }
 
-input[type="text"]:hover, select:hover, textarea:hover { border-color: var(--text); }
+input[type="text"]:hover, input[type="number"]:hover, select:hover, textarea:hover { border-color: var(--text); }
 
 textarea { resize: vertical; }
 
@@ -229,6 +229,48 @@ input[type="color"]:hover { border-color: var(--text); }
 
 .muted { color: var(--muted); margin: 0; }
 .hint { color: var(--muted); font-size: var(--text-sm); margin: var(--space-3) 0; }
+
+/* ---------- generador ---------- */
+
+.generator {
+    margin-bottom: var(--space-6);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) 0;
+}
+
+/* El título desplegable se ve como los demás encabezados y cambia de color al pasar el mouse. */
+.generator summary {
+    font-family: var(--font-title);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: color var(--fast);
+}
+
+.generator summary:hover { color: var(--accent); }
+.generator[open] summary { margin-bottom: var(--space-2); }
+
+/* Fila de semilla: nombre | número | botón "Otra". */
+.seed-row {
+    display: grid;
+    grid-template-columns: calc(var(--space-8) * 2.5) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.seed-row label { color: var(--muted); font-size: var(--text-sm); }
+.seed-row input { padding: var(--space-1) var(--space-2); }
+
+.generator .btn:disabled { opacity: .5; cursor: progress; }
+
+input[type="range"] {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--accent);
+}
 
 /* ---------- capas ---------- */
 
