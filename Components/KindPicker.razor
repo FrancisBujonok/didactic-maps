@@ -2,7 +2,7 @@
    Compact = solo íconos en una fila (barra de colocación); si no, ícono y nombre en grilla.
    Sigue la convención de Blazor Value / ValueChanged, así se puede usar con @bind-Value. *@
 <div class="kind-picker @(Compact ? "compact" : "")">
-    @foreach (var (group, kinds) in MapPin.KindGroups)
+    @foreach (var (group, _, kinds) in MapPin.KindGroups)
     {
         <div class="kind-group" role="group" aria-label="@group">
             @if (!Compact)

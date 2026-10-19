@@ -83,6 +83,7 @@ public class ProjectService
         {
             pin.X = Math.Clamp(pin.X, 0, 1);
             pin.Y = Math.Clamp(pin.Y, 0, 1);
+            if (!Enum.IsDefined(pin.Size)) pin.Size = PinSize.Medium;
         }
 
         Project.Generator?.Normalize();
@@ -173,7 +174,8 @@ public class ProjectService
             X = Math.Clamp(x, 0, 1),
             Y = Math.Clamp(y, 0, 1),
             Kind = kind,
-            Title = kind
+            Title = kind,
+            Size = MapPin.DefaultSize(kind)
         };
         Project.Pins.Add(pin);
         RequestSave();
@@ -187,6 +189,7 @@ public class ProjectService
 
         pin.X = Math.Clamp(x, 0, 1);
         pin.Y = Math.Clamp(y, 0, 1);
+        pin.Generated = false; // el autor lo movió: se conserva al volver a poblar
         RequestSave();
     }
 
@@ -313,7 +316,7 @@ public class ProjectService
     }
 
     /// <summary>Cuántas celdas tienen datos que dependen de la malla (ediciones o reino).</summary>
-    public int CellDataCount => Project.CellEdits.Count + Project.Regions.Sum(r => r.Cells.Count);
+    public int CellDataCount => Project.CellEdits.Count + Project.Regions.Sum(r => r.Cells.Count) + GeneratedPinCount;
 
     /// <summary>
     /// Borra las ediciones y vacía los reinos (que se conservan con nombre y color). Se usa al
@@ -324,7 +327,22 @@ public class ProjectService
         Project.CellEdits.Clear();
         foreach (var region in Project.Regions)
             region.Cells.Clear();
+
+        // Los lugares generados estaban pensados para el continente anterior (en el mapa nuevo
+        // podrían quedar en el mar). Los que el autor adoptó se conservan.
+        RemoveGeneratedPins();
         RequestSave();
+    }
+
+    /// <summary>Cuántos pines generados hay todavía sin tocar.</summary>
+    public int GeneratedPinCount => Project.Pins.Count(p => p.Generated);
+
+    private void RemoveGeneratedPins()
+    {
+        var removed = Project.Pins.Where(p => p.Generated).Select(p => p.Id).ToHashSet();
+        Project.Pins.RemoveAll(p => removed.Contains(p.Id));
+        foreach (var region in Project.Regions.Where(r => r.CapitalPinId is { } id && removed.Contains(id)))
+            region.CapitalPinId = null;
     }
 
     /// <summary>Fuerza un bioma en las celdas elegidas que son tierra.</summary>
@@ -468,7 +486,11 @@ public class ProjectService
             other.CapitalPinId = null;
 
         if (isCapital)
+        {
             region.CapitalPinId = pin.Id;
+            pin.Size = PinSize.Large;   // la capital es el lugar más importante del reino
+            pin.Generated = false;      // el autor la eligió: ya no es un pin "de la máquina"
+        }
 
         RegionsChanged();
     }
@@ -481,6 +503,76 @@ public class ProjectService
     {
         _viewCache.Remove(MapView.Regions);
         RequestSave();
+    }
+
+    // ----------------------------------------------------------------- poblados
+
+    // Color de la capa "Poblados": sepia, distinto de los colores de las capas del autor.
+    private const string SettlementLayerColor = "#6B4E3D";
+
+    /// <summary>
+    /// "Poblar mapa": crea ciudades, aldeas y lugares en el mundo generado y, si se piden,
+    /// reinos alrededor de sus capitales. Los parámetros de poblado se toman de "settings" y se
+    /// guardan en el proyecto (no cambian la imagen, así que no hace falta regenerar el mapa).
+    /// Reemplaza los pines generados que el autor no tocó; los demás se conservan.
+    /// </summary>
+    public (int Places, int Kingdoms) Populate(GeneratorSettings settings)
+    {
+        if (Project.Generator is not { } generator || GetWorld() is not { } world) return (0, 0);
+
+        generator.SettlementSeed = settings.SettlementSeed;
+        generator.SettlementDensity = settings.SettlementDensity;
+        generator.KingdomCount = settings.KingdomCount;
+
+        // Capa propia: se reusa si existe; si el autor la borró, se crea de nuevo, arriba de todas.
+        var layer = Project.Layers.FirstOrDefault(l => l.Id == Project.SettlementLayerId);
+        if (layer is null)
+        {
+            layer = new MapLayer { Name = "Poblados", Color = SettlementLayerColor };
+            Project.Layers.Insert(0, layer);
+            Project.SettlementLayerId = layer.Id;
+        }
+
+        RemoveGeneratedPins();
+
+        var newKingdoms = generator.KingdomCount > 0;
+        var plan = SettlementStage.Plan(world, generator.SettlementSeed, generator.SettlementDensity,
+            generator.KingdomCount, newKingdoms ? new List<Region>() : Project.Regions);
+
+        var pins = plan.Places.Select(place => new MapPin
+        {
+            LayerId = layer.Id,
+            X = world.Mesh.X[place.Cell] / world.Mesh.Width,
+            Y = world.Mesh.Y[place.Cell] / world.Mesh.Height,
+            Kind = place.Kind,
+            Title = place.Name,
+            Size = place.Size,
+            Generated = true
+        }).ToList();
+        Project.Pins.AddRange(pins);
+
+        if (newKingdoms)
+        {
+            Project.Regions = plan.Kingdoms.Select((k, i) => new Region
+            {
+                Name = k.Name,
+                Color = Region.Palette[i % Region.Palette.Length],
+                Cells = k.Cells,
+                CapitalPinId = pins[k.Capital].Id
+            }).ToList();
+        }
+        else
+        {
+            // Reinos del autor: reciben capital solo si no tenían una elegida por él.
+            foreach (var (regionIndex, placeIndex) in plan.CapitalsOfExisting)
+            {
+                var region = Project.Regions[regionIndex];
+                region.CapitalPinId ??= pins[placeIndex].Id;
+            }
+        }
+
+        RegionsChanged(); // redibuja la vista de reinos y guarda
+        return (pins.Count, newKingdoms ? plan.Kingdoms.Count : 0);
     }
 
     // ------------------------------------------------------------------- vistas

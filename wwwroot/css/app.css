@@ -31,6 +31,7 @@
     /* Tipografía */
     --font-ui: "Alegreya Sans", "Segoe UI", sans-serif;
     --font-title: "Alegreya", Georgia, serif;
+    --text-xs: 0.75rem;   /* nombres de los lugares chicos en el mapa */
     --text-sm: 0.875rem;
     --text-md: 1rem;
     --text-lg: 1.25rem;
@@ -39,7 +40,13 @@
     --radius: 4px;
     --focus: 2px;      /* grosor del anillo de foco y de los bordes dobles */
     --control: 32px;   /* alto y ancho de los controles cuadrados */
-    --pin: 28px;     /* insignia del pin, con lugar para un ícono de 16 px */
+    /* Insignias e íconos de pin por tamaño (chico, mediano, grande): múltiplos de 4. */
+    --pin-small: 20px;
+    --pin-medium: 28px;
+    --pin-large: 36px;
+    --icon-small: 12px;
+    --icon-medium: 16px;
+    --icon-large: 20px;
     --fast: 120ms;
 }
 
@@ -598,6 +605,9 @@ input[type="range"] {
 /* ---------- pines ---------- */
 
 .pin {
+    /* Tamaño mediano por defecto; las clases size-* lo cambian. */
+    --pin: var(--pin-medium);
+    --pin-icon: var(--icon-medium);
     position: absolute;
     width: var(--pin);
     height: var(--pin);
@@ -633,8 +643,8 @@ input[type="range"] {
 
 /* Íconos de tipo de pin (Components/PinIcon.razor): todos con el mismo trazo. */
 .pin-icon {
-    width: var(--space-4);
-    height: var(--space-4);
+    width: var(--pin-icon, var(--icon-medium));
+    height: var(--pin-icon, var(--icon-medium));
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -642,6 +652,41 @@ input[type="range"] {
     stroke-linejoin: round;
     flex: none;
 }
+
+/* ---- Tamaños: la importancia del lugar. El nombre también escala, como en los atlas. */
+.pin.size-small { --pin: var(--pin-small); --pin-icon: var(--icon-small); }
+.pin.size-large { --pin: var(--pin-large); --pin-icon: var(--icon-large); }
+
+/* ---- Formas, según el grupo del tipo (MapPin.KindGroups). */
+.pin.shape-square .dot { border-radius: var(--radius); }
+
+/* Sin insignia: solo el ícono en el color de la capa, con un halo de papel para leerse sobre
+   cualquier terreno. Al pasar el mouse o al elegirlo aparece el fondo de papel. */
+.pin.shape-plain .dot {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--pin-color, var(--accent));
+}
+
+/* Sin el círculo de color, un ícono chico se pierde sobre el terreno: va un escalón más grande. */
+.pin.shape-plain.size-small { --pin-icon: var(--icon-medium); }
+.pin.shape-plain.size-medium,
+.pin.shape-plain.size-large { --pin-icon: var(--icon-large); }
+
+.pin.shape-plain .pin-icon {
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 1px var(--paper)) drop-shadow(0 0 1px var(--paper));
+}
+
+.pin.shape-plain:hover .dot,
+.pin.shape-plain.selected .dot,
+.pin.shape-plain:focus-visible .dot {
+    background: var(--paper);
+    border-color: var(--paper);
+}
+
+.pin.shape-plain:hover .dot { box-shadow: 0 0 0 1px var(--ink); }
 
 .pin.selected .dot,
 .pin:focus-visible .dot {
@@ -664,6 +709,16 @@ input[type="range"] {
     white-space: nowrap;
     pointer-events: none;
 }
+
+/* Nombres según la importancia: chicos para lo menor, grandes y en negrita para lo mayor, y
+   la capital en mayúsculas espaciadas como en los atlas. */
+.pin.size-small .label { margin-top: var(--space-1); font-size: var(--text-xs); }
+.pin.size-large .label { font-size: var(--text-md); font-weight: 700; }
+.pin.capital .label { text-transform: uppercase; letter-spacing: .06em; }
+
+/* Generalización: con el mapa alejado (clase "far", la pone mapview.js) no se muestran los
+   nombres de los lugares chicos, para que no se pisen. Al elegir uno, su nombre se ve igual. */
+.viewport.far .pin.size-small:not(.selected) .label { display: none; }
 
 /* ---------- aviso de error de Blazor ---------- */
 

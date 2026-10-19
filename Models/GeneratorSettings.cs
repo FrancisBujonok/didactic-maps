@@ -36,19 +36,36 @@ public class GeneratorSettings
 
     public MapStyle Style { get; set; } = MapStyle.Painted;
 
+    // ---- Poblados ("Poblar mapa"). No cambian la imagen: se aplican sobre el mundo ya generado.
+
+    /// <summary>Dónde caen las ciudades, aldeas y lugares, y cómo se llaman.</summary>
+    public int SettlementSeed { get; set; }
+
+    /// <summary>Cantidad de poblados: 0 pocos, 1 normal, 2 muchos.</summary>
+    public int SettlementDensity { get; set; } = 1;
+
+    /// <summary>Reinos a crear alrededor de las capitales, o 0 para usar los reinos que ya hay.</summary>
+    public int KingdomCount { get; set; } = 4;
+
+    public static readonly (int Value, string Name)[] DensityLevels =
+    {
+        (0, "Pocos"), (1, "Normal"), (2, "Muchos")
+    };
+
     /// <summary>Tamaños de celda que ofrece la interfaz.</summary>
     public static readonly (int Size, string Name)[] DetailLevels =
     {
         (24, "Bajo"), (18, "Medio"), (13, "Alto")
     };
 
-    /// <summary>Configuración nueva con las cuatro semillas al azar.</summary>
+    /// <summary>Configuración nueva con todas las semillas al azar.</summary>
     public static GeneratorSettings CreateRandom() => new()
     {
         ContinentSeed = NewSeed(),
         ClimateSeed = NewSeed(),
         RiverSeed = NewSeed(),
-        BiomeSeed = NewSeed()
+        BiomeSeed = NewSeed(),
+        SettlementSeed = NewSeed()
     };
 
     /// <summary>
@@ -66,6 +83,9 @@ public class GeneratorSettings
         LandRatio = Math.Clamp(LandRatio, 0.2, 0.7);
         if (!DetailLevels.Any(d => d.Size == CellSize))
             CellSize = 18;
+        SettlementDensity = Math.Clamp(SettlementDensity, 0, 2);
+        KingdomCount = Math.Clamp(KingdomCount, 0, 8);
+        if (SettlementSeed == 0) SettlementSeed = 1; // proyectos guardados antes de esta etapa
         if (!Enum.IsDefined(Style))
             Style = MapStyle.Painted;
     }

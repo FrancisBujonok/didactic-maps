@@ -24,6 +24,7 @@ export function init(viewport, world, dotnet) {
     minScale: 0.02,
     maxScale: 16,
     pendingFit: false,
+    fitScale: 1, // escala con la que el mapa entra entero en el visor (la calcula doFit)
     cleanup: [],
   };
   state = s;
@@ -38,6 +39,9 @@ export function init(viewport, world, dotnet) {
     world.style.transform = `translate(${s.x}px, ${s.y}px) scale(${s.scale})`;
     // Los pines usan esta variable para escalarse al revés y verse siempre del mismo tamaño.
     viewport.style.setProperty('--inv-scale', String(1 / s.scale));
+    // Generalización, como en los atlas: con el mapa alejado se ocultan los nombres de los
+    // lugares chicos (ver .viewport.far en app.css). Aparecen al acercarse al doble del ajuste.
+    viewport.classList.toggle('far', s.scale < s.fitScale * 2);
   };
 
   // Centra el mapa entero dentro del visor.
@@ -56,6 +60,7 @@ export function init(viewport, world, dotnet) {
     const scale = Math.min(viewport.clientWidth / w, viewport.clientHeight / h) * 0.96;
     s.scale = scale;
     s.minScale = scale * 0.25;
+    s.fitScale = scale;
 
     // Tope de zoom. La escala es "píxeles de pantalla por cada píxel de imagen": un PNG o JPG
     // por encima de 2 se ve borroso; un SVG se redibuja en cada zoom y aguanta mucho más.

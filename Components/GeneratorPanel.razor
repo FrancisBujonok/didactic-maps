@@ -61,11 +61,57 @@
             salvo que cambies la semilla del continente o el detalle.
         </p>
     }
+
+    @* ---- Poblados: se aplican sobre el mapa ya generado, sin cambiar la imagen. *@
+    <h3>Poblados</h3>
+    <p class="hint">Ciudades, aldeas y lugares donde convienen: junto a ríos, costas y tierra fértil.</p>
+
+    <div class="seed-row">
+        <label for="semilla-poblados" title="Dónde caen los poblados y cómo se llaman">Semilla</label>
+        <input id="semilla-poblados" type="number" min="1" max="999999"
+               value="@_settings.SettlementSeed" @onchange="e => SetSeed(PopulationSeed, e)" />
+        <button class="btn small" disabled="@_busy" aria-label="Otra semilla para los poblados"
+                @onclick="() => _settings.SettlementSeed = GeneratorSettings.NewSeed()">Otra</button>
+    </div>
+
+    <label class="field">
+        <span>Cantidad</span>
+        <select @bind="_settings.SettlementDensity">
+            @foreach (var (value, name) in GeneratorSettings.DensityLevels)
+            {
+                <option value="@value">@name</option>
+            }
+        </select>
+    </label>
+
+    <label class="field">
+        <span>Reinos</span>
+        <select @bind="_settings.KingdomCount">
+            <option value="0">Usar los reinos actuales</option>
+            @for (var n = 2; n <= 8; n++)
+            {
+                <option value="@n">Crear @n reinos</option>
+            }
+        </select>
+    </label>
+
+    <div class="btn-row">
+        <button class="btn" disabled="@(_busy || Store.Project.Generator is null)" @onclick="PopulateAsync">Poblar mapa</button>
+    </div>
+
+    <p class="hint" role="status">
+        @(_populateStatus ?? (Store.Project.Generator is null
+            ? "Generá un mapa primero."
+            : "Los lugares que edites o muevas se conservan si volvés a poblar."))
+    </p>
 </details>
 
 @code {
     /// <summary>Se dispara al terminar de generar, para que el editor ajuste el mapa a la pantalla.</summary>
     [Parameter] public EventCallback OnGenerated { get; set; }
+
+    /// <summary>Se dispara al terminar de poblar, para que el editor dibuje los pines nuevos.</summary>
+    [Parameter] public EventCallback OnPopulated { get; set; }
 
     // Una fila de semilla: nombre visible, ayuda y cómo leer y escribir el valor en _settings.
     private sealed record SeedRow(string Id, string Label, string Help, Func<int> Get, Action<int> Set);
@@ -74,6 +120,46 @@
     private MapProject? _project;
     private bool _busy;
     private string? _status;
+    private string? _populateStatus;
+
+    private SeedRow PopulationSeed => new("poblados", "Semilla", "Dónde caen los poblados y cómo se llaman",
+        () => _settings.SettlementSeed, v => _settings.SettlementSeed = v);
+
+    private async Task PopulateAsync()
+    {
+        if (_busy || Store.Project.Generator is null) return;
+
+        // Antes de reemplazar algo, se avisa qué se pierde.
+        var warnings = new List<string>();
+        if (Store.GeneratedPinCount > 0)
+            warnings.Add($"Se reemplazan los {Store.GeneratedPinCount} lugares generados (los que editaste se conservan).");
+        if (_settings.KingdomCount > 0 && Store.Project.Regions.Count > 0)
+            warnings.Add($"Los {Store.Project.Regions.Count} reinos actuales se reemplazan por {_settings.KingdomCount} nuevos.");
+        if (warnings.Count > 0 &&
+            !await JS.InvokeAsync<bool>("confirm", string.Join(" ", warnings) + " ¿Continuar?"))
+        {
+            return;
+        }
+
+        _busy = true;
+        _populateStatus = "Poblando...";
+        StateHasChanged();
+        await Task.Delay(1); // deja que el navegador muestre el aviso antes del trabajo pesado
+
+        try
+        {
+            var (places, kingdoms) = Store.Populate(_settings);
+            _populateStatus = kingdoms > 0
+                ? $"Se crearon {places} lugares y {kingdoms} reinos."
+                : $"Se crearon {places} lugares.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await OnPopulated.InvokeAsync();
+    }
 
     private SeedRow[] Seeds => new SeedRow[]
     {
@@ -124,6 +210,8 @@
         random.LandRatio = _settings.LandRatio;
         random.CellSize = _settings.CellSize;
         random.Style = _settings.Style;
+        random.SettlementDensity = _settings.SettlementDensity;
+        random.KingdomCount = _settings.KingdomCount;
         await GenerateAsync(random);
     }
 
@@ -147,8 +235,8 @@
         if (cellData > 0 && previous is not null && MapGenerator.ChangesMesh(previous, settings))
         {
             if (!await JS.InvokeAsync<bool>("confirm",
-                    "Cambia la forma del mundo: se pierden los cambios a mano y los reinos quedan sin celdas " +
-                    "(se conservan sus nombres y colores). ¿Continuar?"))
+                    "Cambia la forma del mundo: se pierden los cambios a mano y los lugares generados que no editaste, " +
+                    "y los reinos quedan sin celdas (se conservan sus nombres y colores). ¿Continuar?"))
             {
                 return;
             }

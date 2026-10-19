@@ -18,6 +18,9 @@ public class MapProject
 
     /// <summary>Reinos o regiones del mapa generado (ver Region).</summary>
     public List<Region> Regions { get; set; } = new();
+
+    /// <summary>Capa donde "Poblar mapa" pone los lugares que crea, o null si todavía no se pobló.</summary>
+    public Guid? SettlementLayerId { get; set; }
 }
 
 /// <summary>
@@ -70,24 +73,68 @@ public class MapLayer
 /// <summary>
 /// Un punto del mapa con su ficha (título, tipo, descripción).
 /// </summary>
+/// <summary>Forma del pin en el mapa. Depende del grupo de su tipo.</summary>
+public enum PinShape
+{
+    /// <summary>Insignia redonda con el color de la capa (asentamientos, fe).</summary>
+    Circle,
+
+    /// <summary>Insignia cuadrada: lo fortificado se distingue de un vistazo.</summary>
+    Square,
+
+    /// <summary>Sin insignia: solo el ícono, con un halo de papel. Pesa menos que una ciudad.</summary>
+    Plain
+}
+
+/// <summary>Tamaño del pin: marca la importancia del lugar, como en los mapas impresos.</summary>
+public enum PinSize
+{
+    Small,
+    Medium,
+    Large
+}
+
 public class MapPin
 {
     /// <summary>
-    /// Tipos de pin agrupados como se muestran en el selector. Cada tipo tiene su ícono en
-    /// Components/PinIcon.razor: si se agrega un tipo acá, hay que dibujarle el ícono allá.
+    /// Tipos de pin agrupados como se muestran en el selector, con la forma que lleva cada grupo.
+    /// Cada tipo tiene su ícono en Components/PinIcon.razor: si se agrega uno acá, hay que
+    /// dibujarle el ícono allá (y, si hace falta, darle un tamaño en DefaultSizes).
     /// </summary>
-    public static readonly (string Group, string[] Kinds)[] KindGroups =
+    public static readonly (string Group, PinShape Shape, string[] Kinds)[] KindGroups =
     {
-        ("Asentamientos", new[] { "Ciudad", "Aldea", "Puerto", "Posada" }),
-        ("Defensa", new[] { "Fortaleza", "Torre" }),
-        ("Fe", new[] { "Templo", "Bosque sagrado" }),
-        ("Lugares", new[] { "Cueva", "Mazmorra", "Mina", "Ruina", "Sitio abandonado" }),
-        ("Historia", new[] { "Campo de batalla", "Evento" }),
-        ("Otros", new[] { "Punto de interés", "Facción" }),
+        ("Asentamientos", PinShape.Circle, new[] { "Ciudad", "Aldea", "Puerto", "Posada" }),
+        ("Defensa", PinShape.Square, new[] { "Fortaleza", "Torre" }),
+        ("Fe", PinShape.Circle, new[] { "Templo", "Bosque sagrado" }),
+        ("Lugares", PinShape.Plain, new[] { "Cueva", "Mazmorra", "Mina", "Ruina", "Sitio abandonado" }),
+        ("Historia", PinShape.Plain, new[] { "Campo de batalla", "Evento" }),
+        ("Otros", PinShape.Plain, new[] { "Punto de interés", "Facción" }),
     };
 
     /// <summary>Todos los tipos en una sola lista (para validar y para el valor por defecto).</summary>
     public static readonly string[] Kinds = KindGroups.SelectMany(g => g.Kinds).ToArray();
+
+    /// <summary>Tamaño con el que nace cada tipo. Los que no están acá nacen chicos.</summary>
+    private static readonly Dictionary<string, PinSize> DefaultSizes = new()
+    {
+        ["Ciudad"] = PinSize.Large,
+        ["Puerto"] = PinSize.Medium,
+        ["Fortaleza"] = PinSize.Medium,
+        ["Templo"] = PinSize.Medium,
+        ["Facción"] = PinSize.Medium,
+    };
+
+    public static PinSize DefaultSize(string kind) => DefaultSizes.GetValueOrDefault(kind, PinSize.Small);
+
+    /// <summary>Forma del grupo al que pertenece el tipo (un tipo desconocido va sin insignia).</summary>
+    public static PinShape ShapeOf(string kind)
+    {
+        foreach (var (_, shape, kinds) in KindGroups)
+        {
+            if (kinds.Contains(kind)) return shape;
+        }
+        return PinShape.Plain;
+    }
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid LayerId { get; set; }
@@ -102,4 +149,16 @@ public class MapPin
     public string Title { get; set; } = "Nuevo pin";
     public string Kind { get; set; } = Kinds[0];
     public string Description { get; set; } = "";
+
+    /// <summary>
+    /// Importancia del lugar. Los proyectos guardados antes de que existiera no traen este
+    /// dato: entonces queda el valor de acá (mediano), que es como se veían todos.
+    /// </summary>
+    public PinSize Size { get; set; } = PinSize.Medium;
+
+    /// <summary>
+    /// True si lo creó "Poblar mapa" y el autor todavía no lo tocó. Al volver a poblar, solo
+    /// se reemplazan estos; los que el autor editó dejan de contar como generados y se conservan.
+    /// </summary>
+    public bool Generated { get; set; }
 }

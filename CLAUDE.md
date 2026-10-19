@@ -21,7 +21,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Models/Biome.cs`: enum `Biome` y `BiomeNames` (nombres en español, lista `Land` de biomas editables). Está en Models porque el proyecto guarda biomas elegidos a mano.
 - `Models/CellEdit.cs`: un cambio a mano sobre una celda (`Cell`, `ElevationDelta`, `Biome?`). Se guardan en `MapProject.CellEdits`.
 - `Models/Region.cs`: reino con `Id`, `Name`, `Color`, `Cells` (lista de índices), `CapitalPinId` y paleta. Se guardan en `MapProject.Regions`.
-- `Models/MapProject.cs` también tiene `MapPin.KindGroups` (tipos de pin agrupados; `Kinds` es la lista plana) y `MapLayer.ContrastingInk` (tinta o papel según contraste WCAG con un color de fondo).
+- `Models/MapProject.cs` también tiene `MapPin.KindGroups` (tipos de pin agrupados, con la forma de cada grupo; `Kinds` es la lista plana), `PinShape` (Circle, Square, Plain), `PinSize` (Small, Medium, Large), `MapPin.DefaultSize`, `MapPin.Size`, `MapPin.Generated`, `MapProject.SettlementLayerId` y `MapLayer.ContrastingInk` (tinta o papel según contraste WCAG con un color de fondo).
+- `Generation/SettlementStage.cs`: etapa de poblados ("Poblar mapa"): puntaje de cada celda, ciudades y aldeas separadas, capitales y reinos (Dijkstra), fortalezas en fronteras, cuevas, ruinas y bosques sagrados. Devuelve un `SettlementPlan`; `ProjectService.Populate` lo aplica.
+- `Generation/NameGenerator.cs`: nombres de lugares y reinos uniendo sílabas, con semilla, sin repetir.
 - `Components/PinIcon.razor`: íconos de los tipos de pin y de la capital (estrella), como trazos de path en un diccionario.
 - `Components/KindPicker.razor`: selector visual de tipo, con `Value` / `ValueChanged` (sirve con `@bind-Value`). `Compact` = solo íconos en fila (barra de colocación); sin `Compact` = grilla de dos columnas con ícono y nombre (ficha).
 - `Components/RegionPanel.razor`: sección "Reinos" del panel izquierdo (crear, renombrar, color, borrar). Las celdas se asignan desde `CellPanel` ("Reino" + "Asignar").
@@ -77,7 +79,18 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Evitar íconos que se confundan con signos de interfaz: dos líneas cruzadas se leen como "X" de cerrar; por eso las espadas llevan guardas y pomos.
   - Íconos: grilla de 24 x 24 con 3 de margen, trazo 2, puntas y uniones redondeadas, sin relleno, `currentColor`. Se dibujan a 16 px dentro de una insignia de 28 px (`--pin`). Con detalles chicos (más de dos almenas, columnas sueltas) se empastan o se confunden: revisarlos agrandados (hoja temporal a 72 px) antes de dar uno por bueno.
   - El ícono es tinta o papel según el color de la capa (`--pin-ink`, calculado con `ContrastingInk`). Con estos dos colores, ningún fondo baja de 3,77:1 (mínimo WCAG para gráficos: 3:1). Paleta de capas verificada: el peor caso es #2980b9 con 3,78:1.
-  - Capital: estrella en lugar del ícono del tipo y un segundo anillo de tinta (`outline`). La leyenda de la vista de reinos dice "capital: X".
+  - Capital: estrella en lugar del ícono del tipo y un segundo anillo de tinta (`outline`). La leyenda de la vista de reinos dice "capital: X". Marcar una capital la pasa a tamaño grande y su nombre va en mayúsculas.
+  - Jerarquía visual (pedido del autor: que una capital no se vea igual que una aldea). Tamaño por pin (`Size`, chico 20 px, mediano 28, grande 36; ícono 12, 16, 20; tokens `--pin-*` e `--icon-*`), con nombre más chico o más grande y en negrita. Forma por grupo: Circle (asentamientos, fe), Square (defensa), Plain (lugares, historia, otros: sin insignia, ícono en el color de la capa con halo de papel y un escalón más grande, porque sin círculo se pierde). Los pines viejos sin `Size` quedan medianos, como se veían.
+  - Cambiar el tipo cambia también el tamaño si todavía era el del tipo anterior (mismo criterio que el título).
+  - Generalización: con el mapa alejado (menos del doble de la escala de ajuste) se ocultan los nombres de los lugares chicos (`.viewport.far`, clase que pone `mapview.js`); aparecen al acercarse.
+
+- Poblados ("Poblar mapa", sección del panel del generador):
+  - Semilla propia (`SettlementSeed`), cantidad (`SettlementDensity`: pocos, normal, muchos) y reinos (`KingdomCount`: 0 = usar los actuales, 2 a 8 = crear nuevos). No cambian la imagen: se aplican sobre el mundo en memoria.
+  - Puntaje de celda: fertilidad del bioma + río (más si es grande) + lago + costa - altura, más una variación de la semilla de hasta 0,35. Ciudades con puntaje 0,9 o más, separadas 230/175/135 px según la cantidad; una aldea por ciudad (15 % posadas); ciudades costeras son puertos.
+  - Reinos nuevos: capitales por "punto más lejano" entre las ciudades; cada celda es del reino que llega más barato (Dijkstra; montaña +5, río ancho +3, el mar no se cruza: islas sin capital quedan sin reino). Reinos existentes: su mejor ciudad pasa a capital si no tenían una elegida por el autor.
+  - Extras: fortalezas en fronteras, cuevas en montañas que tocan tierra baja, ruinas y bosques sagrados en las celdas más alejadas de los poblados. Separación propia más chica respecto de los poblados (`takenGap`); sin eso no cabían.
+  - Valores de la prueba (densidad normal): unos 70 lugares, 9 a 13 ciudades, 14 o 15 puertos, 5 o 6 fortalezas, 4 reinos de 12 % a 37 % de la tierra; 10 a 45 ms en PC, 1 s en el navegador.
+  - Los pines generados van a la capa "Poblados" (sepia #6B4E3D) con `Generated = true`. Editarlos en la ficha, moverlos o hacerlos capital los "adopta" (`Generated = false`). Volver a poblar borra solo los generados; generar un mapa con otra malla también.
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
 
 ## Estado actual (2026-10-19)
@@ -107,9 +120,12 @@ Resuelto:
 
 - 2026-10-19: tipos Posada, Bosque sagrado y Campo de batalla (grupo nuevo "Historia"), barra de colocación con íconos y selector visual de tipo en la ficha (pedido por el autor: "que se vea mejor" la forma de agregar). Probado: la barra crea pines del tipo elegido con su nombre, la grilla de la ficha cambia el tipo, la barra se acomoda a 800 px sin desborde. Íconos nuevos revisados a 64 px y a tamaño real (16 px en la insignia); se corrigieron Campo de batalla (parecía una X) y Bosque sagrado (piedras como palitos).
 
+- 2026-10-19: tamaño y forma de pines por importancia, generalización de nombres y "Poblar mapa" con reinos, capitales y nombres (pedido por el autor). Probado: poblar con 4 reinos nuevos (aviso de reemplazo, 64 lugares, capitales grandes con estrella), volver a poblar con otra semilla y los reinos actuales (aviso de 63 generados, la aldea renombrada se conservó, cada reino recibió capital), alejado se ven 46 nombres y cerca 79, revisión a tamaño real de fortalezas cuadradas y cuevas sin insignia. Ajustes tras la prueba: menos poblados, separación propia para los extras, nombres sin letras dobles, ícono más grande en los pines sin insignia.
+
 Pendiente:
 
-- Próximo paso posible: deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo (mostrar u ocultar, por ejemplo, todas las mazmorras).
+- Próximo paso posible: rutas entre ciudades (caminos por el terreno más barato, como los reinos); deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo.
+- Con muchos lugares, los nombres medianos todavía se pisan en ventanas chicas. Mejora posible: correr las etiquetas que chocan o generalizar también los medianos a más distancia.
 - Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.
 - Edición: cada cambio redibuja el SVG completo (2 a 3 s). Si molesta, dibujar solo lo que cambió o mostrar la selección mientras se redibuja.
 - Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.

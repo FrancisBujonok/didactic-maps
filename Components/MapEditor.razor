@@ -27,7 +27,7 @@
                 <button class="btn danger" @onclick="NewProjectAsync">Nuevo</button>
             </div>
 
-            <GeneratorPanel OnGenerated="OnMapGenerated" />
+            <GeneratorPanel OnGenerated="OnMapGenerated" OnPopulated="OnRegionsChanged" />
             <RegionPanel OnChanged="OnRegionsChanged" />
 
             <div class="section-head">
@@ -180,7 +180,7 @@
                             var isSelected = pin.Id == _selectedPinId;
                             var isCapital = capitals.Contains(pin.Id);
 
-                            <div class="pin @(isSelected ? "selected" : "") @(isCapital ? "capital" : "")"
+                            <div class="pin @PinClasses(pin) @(isSelected ? "selected" : "") @(isCapital ? "capital" : "")"
                                  @key="pin.Id"
                                  data-pin-id="@pin.Id"
                                  style="@PinStyle(pin, layer, z, isSelected)"
@@ -243,7 +243,7 @@
 
             <label class="field">
                 <span>Título</span>
-                <input type="text" @bind="selectedPin.Title" @bind:event="oninput" @bind:after="OnDataChanged" />
+                <input type="text" @bind="selectedPin.Title" @bind:event="oninput" @bind:after="() => OnPinChanged(selectedPin)" />
             </label>
 
             @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
@@ -261,9 +261,22 @@
                 }
             </div>
 
+            @* Tamaño: la importancia del lugar en el mapa. *@
+            <div class="field">
+                <span id="tamano-pin">Tamaño</span>
+                <div class="seg" role="group" aria-labelledby="tamano-pin">
+                    @foreach (var (size, name) in SizeNames)
+                    {
+                        <button type="button" class="btn small @(selectedPin.Size == size ? "on" : "")"
+                                aria-pressed="@(selectedPin.Size == size ? "true" : "false")"
+                                @onclick="() => ChangeSize(selectedPin, size)">@name</button>
+                    }
+                </div>
+            </div>
+
             <label class="field">
                 <span>Capa</span>
-                <select @bind="selectedPin.LayerId" @bind:after="OnDataChanged">
+                <select @bind="selectedPin.LayerId" @bind:after="() => OnPinChanged(selectedPin)">
                     @foreach (var l in Store.Project.Layers)
                     {
                         <option value="@l.Id">@l.Name</option>
@@ -299,7 +312,7 @@
 
             <label class="field">
                 <span>Descripción</span>
-                <textarea rows="12" @bind="selectedPin.Description" @bind:event="oninput" @bind:after="OnDataChanged"></textarea>
+                <textarea rows="12" @bind="selectedPin.Description" @bind:event="oninput" @bind:after="() => OnPinChanged(selectedPin)"></textarea>
             </label>
 
             <p class="hint">
@@ -448,7 +461,7 @@
     {
         if (Guid.TryParse(id, out var pinId))
         {
-            Store.MovePin(pinId, x, y);
+            Store.MovePin(pinId, x, y); // mover un pin generado también lo "adopta" (ver MovePin)
         }
 
         StateHasChanged();
@@ -543,6 +556,14 @@
 
     private void OnDataChanged() => Store.RequestSave();
 
+    // Un cambio en la ficha del pin también lo "adopta": si era generado, deja de serlo y se
+    // conserva al volver a poblar el mapa.
+    private void OnPinChanged(MapPin pin)
+    {
+        pin.Generated = false;
+        Store.RequestSave();
+    }
+
     // El mapa nuevo puede tener otro tamaño que la imagen anterior: se vuelve a ajustar.
     // La celda seleccionada era de otro mundo, así que se descarta.
     private void OnMapGenerated()
@@ -557,11 +578,29 @@
     /// </summary>
     private void ChangeKind(MapPin pin, string kind)
     {
+        // Mismo criterio para el título y el tamaño: si todavía eran los del tipo anterior, pasan
+        // a los del tipo nuevo; si el autor los había cambiado, se respetan.
         if (pin.Title == pin.Kind) pin.Title = kind;
+        if (pin.Size == MapPin.DefaultSize(pin.Kind)) pin.Size = MapPin.DefaultSize(kind);
         pin.Kind = kind;
         _choosingKind = false;
-        Store.RequestSave();
+        OnPinChanged(pin);
     }
+
+    private void ChangeSize(MapPin pin, PinSize size)
+    {
+        pin.Size = size;
+        OnPinChanged(pin);
+    }
+
+    private static readonly (PinSize Size, string Name)[] SizeNames =
+    {
+        (PinSize.Small, "Chico"), (PinSize.Medium, "Mediano"), (PinSize.Large, "Grande")
+    };
+
+    // Clases de forma y tamaño del pin, para el CSS: por ejemplo "shape-square size-large".
+    private static string PinClasses(MapPin pin) =>
+        $"shape-{MapPin.ShapeOf(pin.Kind).ToString().ToLowerInvariant()} size-{pin.Size.ToString().ToLowerInvariant()}";
 
     private void SelectPin(Guid id)
     {
