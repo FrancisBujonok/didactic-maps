@@ -35,6 +35,9 @@
         // Una casa con techo a dos aguas y puerta.
         ["Aldea"] = new[] { "M4 21V11l8-7 8 7v10H4z", "M10 21v-5h4v5" },
 
+        // Jarra con espuma: el cartel de las tabernas y posadas.
+        ["Posada"] = new[] { "M6 8h9v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z", "M15 11h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2", "M6 8c0-2.5 2-4 4.5-4S15 5.5 15 8", "M9.5 12v5" },
+
         // Ancla: argolla, caña, cepo y brazos.
         ["Puerto"] = new[] { "M12 3a2 2 0 1 1 0 4a2 2 0 1 1 0-4z", "M12 7v14", "M8 11h8", "M5 14a7 7 0 0 0 14 0" },
 
@@ -46,6 +49,21 @@
 
         // Templo clásico: frontón, columnas y escalón.
         ["Templo"] = new[] { "M3 9l9-5 9 5H3z", "M6 9v9", "M10 9v9", "M14 9v9", "M18 9v9", "M3 21h18" },
+
+        // Árbol de copa redonda entre dos menhires de punta redondeada: lo que lo vuelve sagrado.
+        ["Bosque sagrado"] = new[]
+        {
+            "M12 3a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0-11z", "M12 14v7",
+            "M3 21v-4a1.5 1.5 0 0 1 3 0v4", "M18 21v-4a1.5 1.5 0 0 1 3 0v4", "M2 21h20"
+        },
+
+        // Dos espadas cruzadas. Las guardas anchas y los pomos redondos hacen que se lean como
+        // espadas: dos líneas cruzadas solas parecen una "X" de cerrar o borrar.
+        ["Campo de batalla"] = new[]
+        {
+            "M4 4l10 10", "M11 17l6-6", "M14 14l3 3", "M18.5 18.5m-1.2 0a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0",
+            "M20 4L10 14", "M7 11l6 6", "M10 14l-3 3", "M5.5 18.5m-1.2 0a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0"
+        },
 
         // Ladera con la boca de la cueva, sobre una línea de suelo (sin ella parece un arcoíris).
         ["Cueva"] = new[] { "M3 20c2-8 5-13 9-13s7 5 9 13", "M9 20c0-3 1.5-6 3-6s3 3 3 6", "M2 20h20" },

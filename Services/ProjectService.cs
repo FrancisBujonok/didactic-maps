@@ -159,13 +159,21 @@ public class ProjectService
 
     // ---------------------------------------------------------------- pines
 
-    public MapPin AddPin(Guid layerId, double x, double y)
+    /// <summary>
+    /// Crea un pin del tipo indicado. Su título empieza siendo el nombre del tipo ("Posada"),
+    /// así la etiqueta en el mapa ya dice algo útil antes de escribirle un nombre propio.
+    /// </summary>
+    public MapPin AddPin(Guid layerId, double x, double y, string kind)
     {
+        if (!MapPin.Kinds.Contains(kind)) kind = MapPin.Kinds[0];
+
         var pin = new MapPin
         {
             LayerId = layerId,
             X = Math.Clamp(x, 0, 1),
-            Y = Math.Clamp(y, 0, 1)
+            Y = Math.Clamp(y, 0, 1),
+            Kind = kind,
+            Title = kind
         };
         Project.Pins.Add(pin);
         RequestSave();

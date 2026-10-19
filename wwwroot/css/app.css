@@ -300,20 +300,17 @@ input[type="range"] {
 .facts dt { color: var(--muted); font-size: var(--text-sm); }
 .facts dd { margin: 0; font-weight: 500; }
 
-/* Ficha del pin: valor de solo lectura (el reino) y selector de tipo con su ícono al lado. */
+/* Ficha del pin: valor de solo lectura (el reino) y tipo actual con su ícono y "Cambiar". */
 .field-value { margin: 0; font-weight: 500; }
 
-/* ".field > .kind-row" y no solo ".kind-row": la regla ".field > span" de las etiquetas es más
-   específica y, si no, convertiría esta fila en un bloque con letra chica y tenue. */
-.field > .kind-row {
-    margin: 0;
-    color: var(--text);
-    font-size: var(--text-md);
+.kind-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-2);
 }
+
+.kind-name { font-weight: 500; }
 
 .kind-preview {
     display: flex;
@@ -326,6 +323,98 @@ input[type="range"] {
     border: 1px solid var(--border);
     border-radius: var(--radius);
 }
+
+/* ---------- selector visual de tipo (Components/KindPicker.razor) ---------- */
+
+.kind-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+}
+
+.kind-group-name {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+/* Versión completa (ficha): dos columnas de botones con ícono y nombre. */
+.kind-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
+}
+
+.kind-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control);
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--fast), border-color var(--fast), color var(--fast);
+}
+
+.kind-option:hover { background: var(--hover); border-color: var(--text); }
+.kind-option:active { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+.kind-option.on,
+.kind-option.on:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Versión compacta (barra de colocación): solo íconos, en una fila, con los grupos separados
+   por una línea vertical. */
+.kind-picker.compact {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.kind-picker.compact .kind-group + .kind-group {
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--border);
+}
+
+.kind-picker.compact .kind-options {
+    display: flex;
+    gap: var(--space-1);
+}
+
+.kind-picker.compact .kind-option {
+    justify-content: center;
+    width: var(--control);
+    padding: 0;
+}
+
+/* ---------- barra de colocación (modo "Colocar pines") ---------- */
+
+.placebar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+}
+
+.placebar-label {
+    min-width: calc(var(--space-8) * 5);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.placebar-label strong { color: var(--text); font-weight: 700; }
 
 /* Selector y botón en la misma fila: el selector ocupa el espacio que sobra. */
 .tool-row {

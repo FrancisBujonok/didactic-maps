@@ -23,6 +23,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Models/Region.cs`: reino con `Id`, `Name`, `Color`, `Cells` (lista de índices), `CapitalPinId` y paleta. Se guardan en `MapProject.Regions`.
 - `Models/MapProject.cs` también tiene `MapPin.KindGroups` (tipos de pin agrupados; `Kinds` es la lista plana) y `MapLayer.ContrastingInk` (tinta o papel según contraste WCAG con un color de fondo).
 - `Components/PinIcon.razor`: íconos de los tipos de pin y de la capital (estrella), como trazos de path en un diccionario.
+- `Components/KindPicker.razor`: selector visual de tipo, con `Value` / `ValueChanged` (sirve con `@bind-Value`). `Compact` = solo íconos en fila (barra de colocación); sin `Compact` = grilla de dos columnas con ícono y nombre (ficha).
 - `Components/RegionPanel.razor`: sección "Reinos" del panel izquierdo (crear, renombrar, color, borrar). Las celdas se asignan desde `CellPanel` ("Reino" + "Asignar").
 - `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda y estilo (`MapStyle`: Pintado o Celdas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
@@ -71,7 +72,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Colores del mapa fijos (no dependen del tema), apagados para que resalten pines y etiquetas.
 
 - Pines e íconos:
-  - 15 tipos en 5 grupos (`optgroup` en el selector). Agregar un tipo = sumarlo a `KindGroups` y dibujarle el ícono en `PinIcon`; un tipo desconocido usa el ícono de "Punto de interés".
+  - 18 tipos en 6 grupos: Asentamientos (Ciudad, Aldea, Puerto, Posada), Defensa (Fortaleza, Torre), Fe (Templo, Bosque sagrado), Lugares (Cueva, Mazmorra, Mina, Ruina, Sitio abandonado), Historia (Campo de batalla, Evento), Otros (Punto de interés, Facción). Agregar un tipo = sumarlo a `KindGroups` y dibujarle el ícono en `PinIcon`; un tipo desconocido usa el ícono de "Punto de interés".
+  - Cómo se eligen: en "Colocar pines" aparece la barra de colocación (`.placebar`) con los íconos; los pines nuevos nacen con ese tipo y con el nombre del tipo como título. En la ficha, el tipo actual con "Cambiar", que abre la grilla. Si el título todavía es el nombre del tipo, cambiar el tipo cambia también el título; si el autor le puso nombre propio, se respeta.
+  - Evitar íconos que se confundan con signos de interfaz: dos líneas cruzadas se leen como "X" de cerrar; por eso las espadas llevan guardas y pomos.
   - Íconos: grilla de 24 x 24 con 3 de margen, trazo 2, puntas y uniones redondeadas, sin relleno, `currentColor`. Se dibujan a 16 px dentro de una insignia de 28 px (`--pin`). Con detalles chicos (más de dos almenas, columnas sueltas) se empastan o se confunden: revisarlos agrandados (hoja temporal a 72 px) antes de dar uno por bueno.
   - El ícono es tinta o papel según el color de la capa (`--pin-ink`, calculado con `ContrastingInk`). Con estos dos colores, ningún fondo baja de 3,77:1 (mínimo WCAG para gráficos: 3:1). Paleta de capas verificada: el peor caso es #2980b9 con 3,78:1.
   - Capital: estrella en lugar del ícono del tipo y un segundo anillo de tinta (`outline`). La leyenda de la vista de reinos dice "capital: X".
@@ -102,10 +105,11 @@ Resuelto:
 
 - 2026-10-19: capitales vinculadas a pines y 15 tipos de pin con íconos SVG propios (pedido por el autor). Probado: el reino del pin se detecta por su posición, la casilla de capital funciona y sobrevive a recargar, al sacar la capital de su reino aparece el aviso, al borrar el pin el reino queda sin capital, la leyenda muestra la capital, ficha en claro y oscuro. Íconos revisados a 72 px: se rediseñaron Ruina (parecía un gráfico de barras), Cueva (parecía un arcoíris) y Torre (almenas empastadas).
 
+- 2026-10-19: tipos Posada, Bosque sagrado y Campo de batalla (grupo nuevo "Historia"), barra de colocación con íconos y selector visual de tipo en la ficha (pedido por el autor: "que se vea mejor" la forma de agregar). Probado: la barra crea pines del tipo elegido con su nombre, la grilla de la ficha cambia el tipo, la barra se acomoda a 800 px sin desborde. Íconos nuevos revisados a 64 px y a tamaño real (16 px en la insignia); se corrigieron Campo de batalla (parecía una X) y Bosque sagrado (piedras como palitos).
+
 Pendiente:
 
-- Próximo paso posible: deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines.
-- Íconos sin tipo propio todavía: "Facción" y "Evento" son abstractos (estandarte y reloj de arena); revisar con el autor si le sirven.
+- Próximo paso posible: deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo (mostrar u ocultar, por ejemplo, todas las mazmorras).
 - Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.
 - Edición: cada cambio redibuja el SVG completo (2 a 3 s). Si molesta, dibujar solo lo que cambió o mostrar la selección mientras se redibuja.
 - Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.

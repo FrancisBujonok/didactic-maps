@@ -1,0 +1,42 @@
+@* Selector visual de tipo de pin: botones con ícono, agrupados como MapPin.KindGroups.
+   Compact = solo íconos en una fila (barra de colocación); si no, ícono y nombre en grilla.
+   Sigue la convención de Blazor Value / ValueChanged, así se puede usar con @bind-Value. *@
+<div class="kind-picker @(Compact ? "compact" : "")">
+    @foreach (var (group, kinds) in MapPin.KindGroups)
+    {
+        <div class="kind-group" role="group" aria-label="@group">
+            @if (!Compact)
+            {
+                <span class="kind-group-name">@group</span>
+            }
+            <div class="kind-options">
+                @foreach (var kind in kinds)
+                {
+                    var selected = kind == Value;
+                    <button type="button" class="kind-option @(selected ? "on" : "")"
+                            aria-pressed="@(selected ? "true" : "false")"
+                            aria-label="@(Compact ? kind : null)"
+                            title="@(Compact ? kind : null)"
+                            @onclick="() => ValueChanged.InvokeAsync(kind)">
+                        <PinIcon Kind="@kind" />
+                        @if (!Compact)
+                        {
+                            <span>@kind</span>
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Tipo elegido.</summary>
+    [Parameter] public string Value { get; set; } = "";
+
+    /// <summary>Se dispara al tocar un tipo, con el tipo nuevo.</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>True para mostrar solo los íconos (el nombre queda como descripción emergente y nombre accesible).</summary>
+    [Parameter] public bool Compact { get; set; }
+}

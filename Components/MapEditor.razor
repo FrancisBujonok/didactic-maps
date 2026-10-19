@@ -112,6 +112,15 @@
             <span class="status msg">@_message</span>
         </div>
 
+        @* Barra de colocación: solo en "Colocar pines". El tipo elegido es el de los pines nuevos. *@
+        @if (_mode == Mode.AddPin)
+        {
+            <div class="placebar">
+                <span class="placebar-label">Pin nuevo: <strong>@_newPinKind</strong></span>
+                <KindPicker Compact="true" @bind-Value="_newPinKind" />
+            </div>
+        }
+
         @* Este div NO lleva atributo style: mapview.js le pone una variable CSS. *@
         <div class="viewport @ModeClass" @ref="_viewport">
 
@@ -237,23 +246,20 @@
                 <input type="text" @bind="selectedPin.Title" @bind:event="oninput" @bind:after="OnDataChanged" />
             </label>
 
-            <label class="field">
+            @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
+            <div class="field">
                 <span>Tipo</span>
-                <span class="kind-row">
+                <div class="kind-row">
                     <span class="kind-preview"><PinIcon Kind="@selectedPin.Kind" /></span>
-                    <select @bind="selectedPin.Kind" @bind:after="OnDataChanged">
-                        @foreach (var (group, kinds) in MapPin.KindGroups)
-                        {
-                            <optgroup label="@group">
-                                @foreach (var kind in kinds)
-                                {
-                                    <option value="@kind">@kind</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                </span>
-            </label>
+                    <span class="kind-name">@selectedPin.Kind</span>
+                    <button type="button" class="btn small" aria-expanded="@(_choosingKind ? "true" : "false")"
+                            @onclick="() => _choosingKind = !_choosingKind">@(_choosingKind ? "Listo" : "Cambiar")</button>
+                </div>
+                @if (_choosingKind)
+                {
+                    <KindPicker Value="@selectedPin.Kind" ValueChanged="kind => ChangeKind(selectedPin, kind)" />
+                }
+            </div>
 
             <label class="field">
                 <span>Capa</span>
@@ -308,6 +314,10 @@
             <CellPanel World="Store.GetWorld()!" Cells="_selectedCells"
                        OnClearSelection="ClearCellSelection" OnEdited="OnCellsEdited" />
         }
+        else if (Store.Loaded && _mode == Mode.AddPin)
+        {
+            <p class="muted">Elegí un tipo en la barra de arriba del mapa y hacé clic donde quieras colocarlo.</p>
+        }
         else if (Store.Loaded && _mode == Mode.Inspect)
         {
             <p class="muted">
@@ -335,6 +345,8 @@
     private DotNetObjectReference<MapEditor>? _self;
 
     private Mode _mode = Mode.Navigate;
+    private string _newPinKind = MapPin.Kinds[0]; // tipo de los pines que se colocan
+    private bool _choosingKind;                   // la ficha muestra la grilla de tipos
     private MapView _view = MapView.Terrain;          // vista que se muestra
     private MapView _requestedView = MapView.Terrain; // última vista elegida (puede estar preparándose)
     private Guid _activeLayerId;
@@ -409,7 +421,8 @@
             layer.Visible = true; // si no, el pin nuevo quedaría invisible
             _activeLayerId = layer.Id;
 
-            var pin = Store.AddPin(layer.Id, x, y);
+            var pin = Store.AddPin(layer.Id, x, y, _newPinKind);
+            _choosingKind = false;
             _selectedPinId = pin.Id;
         }
         else if (_mode == Mode.Inspect && Store.GetWorld() is { } world)
@@ -538,10 +551,23 @@
         _selectedCells.Clear();
     }
 
+    /// <summary>
+    /// Cambia el tipo del pin. Si el título todavía era el nombre del tipo (el que se pone al
+    /// crearlo), se cambia también; si el autor ya le puso un nombre propio, se respeta.
+    /// </summary>
+    private void ChangeKind(MapPin pin, string kind)
+    {
+        if (pin.Title == pin.Kind) pin.Title = kind;
+        pin.Kind = kind;
+        _choosingKind = false;
+        Store.RequestSave();
+    }
+
     private void SelectPin(Guid id)
     {
         _selectedPinId = id;
         _selectedCells.Clear();
+        _choosingKind = false;
 
         // La ficha muestra el reino del pin, que necesita el mundo en memoria. Si hay que
         // rearmarlo (tras recargar la página), mejor acá que en medio del dibujo de la ficha.

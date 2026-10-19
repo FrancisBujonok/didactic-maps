@@ -78,11 +78,12 @@ public class MapPin
     /// </summary>
     public static readonly (string Group, string[] Kinds)[] KindGroups =
     {
-        ("Asentamientos", new[] { "Ciudad", "Aldea", "Puerto" }),
+        ("Asentamientos", new[] { "Ciudad", "Aldea", "Puerto", "Posada" }),
         ("Defensa", new[] { "Fortaleza", "Torre" }),
-        ("Fe", new[] { "Templo" }),
+        ("Fe", new[] { "Templo", "Bosque sagrado" }),
         ("Lugares", new[] { "Cueva", "Mazmorra", "Mina", "Ruina", "Sitio abandonado" }),
-        ("Otros", new[] { "Punto de interés", "Facción", "Evento" }),
+        ("Historia", new[] { "Campo de batalla", "Evento" }),
+        ("Otros", new[] { "Punto de interés", "Facción" }),
     };
 
     /// <summary>Todos los tipos en una sola lista (para validar y para el valor por defecto).</summary>
