@@ -84,4 +84,48 @@ public sealed class World
 
     /// <summary>True si la celda es mar abierto.</summary>
     public bool IsOcean(int i) => Water[i] && !IsLake[i];
+
+    /// <summary>Tamaño del río que pasa por la celda: -1 ninguno, 0 arroyo, 1 río, 2 río caudaloso.</summary>
+    public int RiverSize(int i)
+    {
+        if (IsOcean(i) || Flux[i] < RiverThreshold) return -1;
+        var ratio = Flux[i] / RiverThreshold;
+        return ratio < 4 ? 0 : ratio < 12 ? 1 : 2;
+    }
+
+    // ---- Unidades para mostrar. El generador trabaja todo entre 0 y 1; estas escalas son
+    //      inventadas para que los números se lean como los de un mundo real.
+
+    /// <summary>Altura en metros sobre el nivel del mar (negativa bajo el agua).</summary>
+    public double ElevationMeters(int i) => Elevation[i] * (Elevation[i] > 0 ? 4500 : 5000);
+
+    /// <summary>
+    /// Temperatura media anual en grados: 0 son -15 °C y 1 son 35 °C. Con esta escala los
+    /// límites de la tabla de biomas caen cerca de los reales: hielo bajo -9 °C, tundra y taiga
+    /// hasta 0 °C, templado hasta 15 °C y tropical por encima.
+    /// </summary>
+    public double TemperatureCelsius(int i) => -15 + 50 * Temperature[i];
+}
+
+/// <summary>Nombres de los biomas para mostrar en la interfaz.</summary>
+public static class BiomeNames
+{
+    public static string Of(Biome biome) => biome switch
+    {
+        Biome.Ocean => "Mar",
+        Biome.Lake => "Lago",
+        Biome.Ice => "Hielo",
+        Biome.Tundra => "Tundra",
+        Biome.Taiga => "Taiga",
+        Biome.Grassland => "Pradera",
+        Biome.TemperateForest => "Bosque templado",
+        Biome.TemperateRainforest => "Bosque lluvioso templado",
+        Biome.Desert => "Desierto",
+        Biome.Savanna => "Sabana",
+        Biome.TropicalForest => "Bosque tropical",
+        Biome.Jungle => "Selva",
+        Biome.Mountain => "Montaña",
+        Biome.Snow => "Nieves eternas",
+        _ => biome.ToString()
+    };
 }

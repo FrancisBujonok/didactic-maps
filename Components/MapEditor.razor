@@ -82,6 +82,11 @@
                 <button class="btn @(_mode == Mode.AddPin ? "on" : "")"
                         aria-pressed="@(_mode == Mode.AddPin ? "true" : "false")"
                         @onclick="() => _mode = Mode.AddPin">Colocar pines</button>
+                <button class="btn @(_mode == Mode.Inspect ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.Inspect ? "true" : "false")"
+                        disabled="@(Store.Project.Generator is null)"
+                        title="@(Store.Project.Generator is null ? "Solo para mapas generados" : "Clic en el mapa para ver los datos de una celda")"
+                        @onclick="EnterInspectModeAsync">Ver celdas</button>
             </div>
 
             <label class="check">
@@ -95,13 +100,25 @@
         </div>
 
         @* Este div NO lleva atributo style: mapview.js le pone una variable CSS. *@
-        <div class="viewport @(_mode == Mode.AddPin ? "adding" : "")" @ref="_viewport">
+        <div class="viewport @ModeClass" @ref="_viewport">
 
             @* .world tampoco lleva style: mapview.js lo mueve y lo escala. *@
             <div class="world" @ref="_world">
                 @if (!string.IsNullOrEmpty(Store.ImageDataUrl))
                 {
                     <img src="@Store.ImageDataUrl" alt="Mapa base" draggable="false" />
+                }
+
+                @* Contorno de la celda seleccionada. El SVG tiene el mismo tamaño que el mapa
+                   generado, así que los vértices de la malla se usan tal cual. *@
+                @if (SelectedCellPolygon is { } polygon)
+                {
+                    var world = Store.GetWorld()!;
+                    <svg class="cell-highlight" viewBox="0 0 @F(world.Mesh.Width) @F(world.Mesh.Height)"
+                         preserveAspectRatio="none" aria-hidden="true">
+                        <polygon class="halo" points="@polygon" />
+                        <polygon class="line" points="@polygon" />
+                    </svg>
                 }
 
                 @if (Store.Loaded)
@@ -197,6 +214,14 @@
 
             <button class="btn danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
         }
+        else if (Store.Loaded && _selectedCell is { } cell && Store.WorldReady)
+        {
+            <CellInfo World="Store.GetWorld()!" Cell="cell" />
+        }
+        else if (Store.Loaded && _mode == Mode.Inspect)
+        {
+            <p class="muted">Hacé clic en el mapa para ver los datos de una celda.</p>
+        }
         else if (Store.Loaded)
         {
             <p class="muted">
@@ -207,7 +232,7 @@
 </div>
 
 @code {
-    private enum Mode { Navigate, AddPin }
+    private enum Mode { Navigate, AddPin, Inspect }
 
     // Referencias a elementos del DOM que se le pasan a JavaScript.
     private ElementReference _viewport;
@@ -219,6 +244,7 @@
     private Mode _mode = Mode.Navigate;
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
+    private int? _selectedCell; // índice de la celda en la malla del mundo generado
     private bool _showLabels = true;
     private bool _needsFit;
     private string _message = "";
@@ -288,9 +314,17 @@
             var pin = Store.AddPin(layer.Id, x, y);
             _selectedPinId = pin.Id;
         }
+        else if (_mode == Mode.Inspect && Store.GetWorld() is { } world)
+        {
+            // El clic llega normalizado (0 a 1): se pasa a píxeles del mapa generado.
+            var cell = world.Mesh.FindCell(x * world.Mesh.Width, y * world.Mesh.Height);
+            _selectedCell = cell >= 0 ? cell : null;
+            _selectedPinId = null;
+        }
         else
         {
             _selectedPinId = null;
+            _selectedCell = null;
         }
 
         StateHasChanged();
@@ -313,9 +347,37 @@
     private void OnDataChanged() => Store.RequestSave();
 
     // El mapa nuevo puede tener otro tamaño que la imagen anterior: se vuelve a ajustar.
-    private void OnMapGenerated() => _needsFit = true;
+    // La celda seleccionada era de otro mundo, así que se descarta.
+    private void OnMapGenerated()
+    {
+        _needsFit = true;
+        _selectedCell = null;
+    }
 
-    private void SelectPin(Guid id) => _selectedPinId = id;
+    private void SelectPin(Guid id)
+    {
+        _selectedPinId = id;
+        _selectedCell = null;
+    }
+
+    /// <summary>
+    /// Activa "Ver celdas". Si el mundo no está en memoria (por ejemplo, tras recargar la página)
+    /// hay que rearmarlo desde las semillas, y eso demora unos segundos: primero se avisa.
+    /// </summary>
+    private async Task EnterInspectModeAsync()
+    {
+        if (!Store.WorldReady)
+        {
+            _message = "Preparando las celdas...";
+            StateHasChanged();
+            await Task.Delay(1); // deja que el navegador muestre el aviso antes del trabajo pesado
+            Store.GetWorld();
+            _message = "";
+        }
+
+        _mode = Mode.Inspect;
+        _selectedPinId = null;
+    }
 
     // Un div no reacciona solo a Enter o Espacio como un botón: hay que hacerlo a mano.
     private void OnPinKeyDown(KeyboardEventArgs e, Guid id)
@@ -346,6 +408,11 @@
         if (await Store.SetImageAsync(file))
         {
             _needsFit = true;
+            _selectedCell = null;
+            if (_mode == Mode.Inspect)
+            {
+                _mode = Mode.Navigate; // una imagen cargada no tiene celdas
+            }
             _message = "Imagen cargada.";
         }
         else
@@ -405,8 +472,15 @@
     private void ResetSelection()
     {
         _selectedPinId = null;
+        _selectedCell = null;
         _activeLayerId = Store.Project.Layers[0].Id;
         _needsFit = !string.IsNullOrEmpty(Store.ImageDataUrl);
+
+        // Sin mapa generado no hay celdas que ver.
+        if (_mode == Mode.Inspect && Store.Project.Generator is null)
+        {
+            _mode = Mode.Navigate;
+        }
     }
 
     private void AddLayer()
@@ -456,6 +530,30 @@
     // ------------------------------------------------------------ ayudas de vista
 
     private int PinCount(MapLayer layer) => Store.Project.Pins.Count(p => p.LayerId == layer.Id);
+
+    // Clase CSS del visor según el modo: cambia el cursor.
+    private string ModeClass => _mode switch
+    {
+        Mode.AddPin => "adding",
+        Mode.Inspect => "inspecting",
+        _ => ""
+    };
+
+    /// <summary>
+    /// Vértices de la celda seleccionada en el formato del atributo "points" de SVG
+    /// ("x1,y1 x2,y2 ..."), o null si no hay celda para resaltar.
+    /// </summary>
+    private string? SelectedCellPolygon
+    {
+        get
+        {
+            if (_selectedCell is not { } cell || !Store.WorldReady) return null;
+            var polygon = Store.GetWorld()?.Mesh.Polygons[cell];
+            return polygon is null ? null : string.Join(" ", polygon.Select(p => $"{F(p.X)},{F(p.Y)}"));
+        }
+    }
+
+    private static string F(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 
     private static string FormatPercent(double value) =>
         (value * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%";

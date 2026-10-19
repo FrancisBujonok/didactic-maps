@@ -28,10 +28,14 @@ public static class MapGenerator
         return world;
     }
 
-    /// <summary>Genera el mapa y lo devuelve como data URL, listo para usar de imagen base.</summary>
-    public static string GenerateDataUrl(GeneratorSettings settings)
+    /// <summary>
+    /// Genera el mundo y su dibujo. Devuelve los dos: el data URL para usar de imagen base y
+    /// el mundo, que se guarda en memoria para consultar las celdas.
+    /// </summary>
+    public static (World World, string DataUrl) Generate(GeneratorSettings settings)
     {
-        var svg = SvgMapRenderer.Render(Build(settings));
-        return "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
+        var world = Build(settings);
+        var svg = SvgMapRenderer.Render(world, settings.Style);
+        return (world, "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg)));
     }
 }

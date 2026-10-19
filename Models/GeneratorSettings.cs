@@ -1,5 +1,15 @@
 namespace MapaMundos.Models;
 
+/// <summary>Cómo se dibuja el mapa generado. No cambia el mundo, solo su aspecto.</summary>
+public enum MapStyle
+{
+    /// <summary>Costas suaves y transiciones difuminadas, como un mapa pintado.</summary>
+    Painted,
+
+    /// <summary>Cada celda visible con su borde: la grilla del generador a la vista.</summary>
+    Cells
+}
+
 /// <summary>
 /// Parámetros del generador de mapas. Se guardan con el proyecto: con los mismos valores
 /// se obtiene exactamente el mismo mapa.
@@ -23,6 +33,8 @@ public class GeneratorSettings
 
     /// <summary>Separación entre celdas en píxeles: menos separación, más detalle y más demora.</summary>
     public int CellSize { get; set; } = 18;
+
+    public MapStyle Style { get; set; } = MapStyle.Painted;
 
     /// <summary>Tamaños de celda que ofrece la interfaz.</summary>
     public static readonly (int Size, string Name)[] DetailLevels =
@@ -54,5 +66,7 @@ public class GeneratorSettings
         LandRatio = Math.Clamp(LandRatio, 0.2, 0.7);
         if (!DetailLevels.Any(d => d.Size == CellSize))
             CellSize = 18;
+        if (!Enum.IsDefined(Style))
+            Style = MapStyle.Painted;
     }
 }

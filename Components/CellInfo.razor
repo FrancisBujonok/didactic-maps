@@ -1,0 +1,51 @@
+@using System.Globalization
+@using MapaMundos.Generation
+
+@* Ficha de solo lectura con los datos de una celda del mundo generado. *@
+<h2>Celda</h2>
+
+<dl class="facts">
+    <dt>Terreno</dt>
+    <dd>@BiomeNames.Of(World.Biomes[Cell])</dd>
+
+    <dt>@(World.Water[Cell] ? "Profundidad" : "Altura")</dt>
+    <dd>@Number(Math.Abs(World.ElevationMeters(Cell))) m</dd>
+
+    <dt>Temperatura media</dt>
+    <dd>@Number(World.TemperatureCelsius(Cell)) °C</dd>
+
+    @if (World.IsLand(Cell))
+    {
+        <dt>Humedad</dt>
+        <dd>@Number(World.Moisture[Cell] * 100) %</dd>
+
+        <dt>Río</dt>
+        <dd>@RiverText</dd>
+    }
+</dl>
+
+<p class="hint">
+    Valores aproximados: el generador trabaja con escalas de 0 a 1 y acá se pasan a unidades
+    de un mundo real. Celda @Cell de @World.Mesh.Count.
+</p>
+
+@code {
+    [Parameter, EditorRequired] public World World { get; set; } = default!;
+
+    /// <summary>Índice de la celda en la malla.</summary>
+    [Parameter, EditorRequired] public int Cell { get; set; }
+
+    private string RiverText => World.RiverSize(Cell) switch
+    {
+        0 => "Arroyo",
+        1 => "Río",
+        2 => "Río caudaloso",
+        _ => "No"
+    };
+
+    // Sin decimales y con punto como separador de miles ("1.250"). Se arma a mano en lugar de
+    // pedir la cultura es-AR para no depender de los datos de idioma que cargue el navegador.
+    // Sumar 0.0 convierte el "-0" que deja redondear -0.3 en un 0 normal.
+    private static string Number(double value) =>
+        (Math.Round(value) + 0.0).ToString("#,0", CultureInfo.InvariantCulture).Replace(',', '.');
+}

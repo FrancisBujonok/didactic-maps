@@ -16,11 +16,12 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Services/ProjectService.cs`: estado del proyecto abierto, guardado con debounce de 400 ms, import/export.
 - `Components/MapEditor.razor`: interfaz principal (panel de capas, barra, mapa, ficha del pin).
 - `Components/GeneratorPanel.razor`: panel "Generar mapa" (semillas, tierra, detalle). Edita una copia de `GeneratorSettings` y la guarda al generar.
-- `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra y tamaño de celda. Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
+- `Components/CellInfo.razor`: ficha de solo lectura de una celda (terreno, altura, temperatura, humedad, río).
+- `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda y estilo (`MapStyle`: Pintado o Celdas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
   - `Rng.cs` (Mulberry32 con semilla), `PerlinNoise.cs` (ruido y fBm).
-  - `Mesh.cs`: grilla hexagonal con puntos desplazados, vecinas fijas por fila y columna, polígonos con baricentros, BFS `Distances`.
-  - `World.cs`: un arreglo por dato y por celda (altura, agua, lago, clima, drenaje, caudal, bioma).
+  - `Mesh.cs`: grilla hexagonal con puntos desplazados, vecinas fijas por fila y columna, polígonos con baricentros, BFS `Distances`, `FindCell` (centro más cercano y prueba del rayo).
+  - `World.cs`: un arreglo por dato y por celda (altura, agua, lago, clima, drenaje, caudal, bioma), `RiverSize`, conversión a metros y grados, y `BiomeNames` (nombres en español).
   - `ReliefStage.cs`, `ClimateStage.cs`, `RiverStage.cs`, `BiomeStage.cs`: una etapa por archivo, cada una con su semilla.
   - `SvgMapRenderer.cs`: dibujo en SVG. `MapGenerator.cs`: orquesta todo y devuelve el data URL.
 - `wwwroot/js/mapview.js`: zoom, pan, clics y arrastre de pines.
@@ -45,6 +46,10 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Nivel del mar por cuantil: el porcentaje de tierra se cumple siempre. Caída extra con potencia 8 cerca de los bordes para que la tierra no quede cortada.
   - Ríos con "priority flood": cada celda drena hacia la celda desde la que la alcanzó la inundación; caudal acumulado en orden inverso. Umbral de río proporcional a la tierra (`CatchmentFraction`).
   - Dibujo: costa y orillas encadenadas en contornos y suavizadas con Chaikin (2 pasadas); la tierra se recorta con ese contorno (`clipPath`, `evenodd` para los lagos) y se desenfoca (`feGaussianBlur`) para ocultar los hexágonos. El mar costero son trazos anchos de la costa. Los afluentes terminan en el punto medio de un tramo del río principal porque Chaikin conserva esos puntos.
+  - Estilo "Celdas": sin suavizado de costas, sin desenfoque, sin celdas de agua pintadas, y cada celda con un borde 18 % más oscuro que su relleno. Mismo mundo que "Pintado"; solo cambia el dibujo.
+  - El mundo (`World`) vive en memoria en `ProjectService` y no se guarda. `GetWorld()` lo rearma desde `Project.Generator` si falta (tarda menos de 1 s); se descarta al cargar imagen, importar o empezar proyecto nuevo.
+  - Modo "Ver celdas" (`Mode.Inspect`): el clic normalizado se pasa a píxeles del mapa (2000 x 1250) y `FindCell` devuelve la celda. El contorno se dibuja con un SVG en línea dentro de `.world` (contenido propio, no del usuario) con grosor dividido por `--inv-scale`.
+  - Unidades mostradas: altura 0 a 1 = 0 a 4500 m, profundidad hasta 5000 m, temperatura 0 a 1 = -15 a 35 °C (elegida para que los límites de biomas caigan cerca de los reales).
   - Colores del mapa fijos (no dependen del tema), apagados para que resalten pines y etiquetas.
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
 
@@ -65,8 +70,12 @@ Resuelto:
 
 - 2026-10-19: generador de mapas al azar (pedido por el autor antes que el resto de la hoja de ruta). Probado: diez semillas sin tierra en el borde, 40 % de tierra exacto, 16 a 34 desembocaduras, biomas variados según latitud. En el navegador (Debug) tarda unos 3 s con detalle medio y pesa unos 600 KB.
 
+- 2026-10-19: estilo "Celdas" y modo "Ver celdas" con ficha de celda (pedido por el autor). Probado en vista previa: ficha correcta en tierra y mar, contorno visible, rearmado del mundo tras recargar en 0.76 s.
+
 Pendiente:
 
+- Próximo paso acordado: editar a mano la celda seleccionada (cambiar bioma, subir o bajar tierra), y después agrupar celdas en regiones o reinos.
+- Ejercicio del autor: agregar "Distancia a la costa" a `CellInfo.razor` con `World.CoastDistance`.
 - Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.
 - Generador: sombra de lluvia, nombres de lugares, símbolos de montaña. Ejercicio del autor: bioma "Pantano" en `BiomeStage.Classify`.
 - Íconos SVG propios por tipo de pin (hoy todos son un círculo).

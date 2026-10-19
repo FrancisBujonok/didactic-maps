@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MapaMundos.Generation;
 using MapaMundos.Models;
 using Microsoft.JSInterop;
 
@@ -17,6 +18,7 @@ public class ProjectService
     private IJSObjectReference? _storage; // js/storage.js
     private IJSObjectReference? _files;   // js/files.js
     private CancellationTokenSource? _saveCts;
+    private World? _world; // mundo generado en memoria (ver GetWorld)
 
     public ProjectService(IJSRuntime js) => _js = js;
 
@@ -170,18 +172,35 @@ public class ProjectService
 
         ImageDataUrl = file.Content;
         Project.Generator = null; // la imagen ya no es la generada
+        _world = null;
         RequestSave();
         await SaveImageAsync();
         return true;
     }
 
     /// <summary>Usa un mapa generado como imagen base y guarda con qué parámetros se hizo.</summary>
-    public async Task SetGeneratedImageAsync(string dataUrl, GeneratorSettings settings)
+    public async Task SetGeneratedImageAsync(string dataUrl, GeneratorSettings settings, World world)
     {
         ImageDataUrl = dataUrl;
         Project.Generator = settings;
+        _world = world;
         RequestSave();
         await SaveImageAsync();
+    }
+
+    /// <summary>True si el mundo ya está en memoria (consultarlo no va a demorar).</summary>
+    public bool WorldReady => _world is not null;
+
+    /// <summary>
+    /// El mundo generado, para consultar sus celdas, o null si la imagen no es generada.
+    /// No se guarda en el navegador: si falta (por ejemplo, después de recargar la página) se
+    /// rearma con las semillas del proyecto. Da el mismo mundo porque el generador es determinista.
+    /// </summary>
+    public World? GetWorld()
+    {
+        if (Project.Generator is null) return null;
+        _world ??= MapGenerator.Build(Project.Generator);
+        return _world;
     }
 
     public async Task ExportAsync()
@@ -203,6 +222,7 @@ public class ProjectService
                 return (false, "El archivo no contiene un proyecto válido.");
 
             Project = file.Project;
+            _world = null;
             ImageDataUrl = file.ImageDataUrl is { } url &&
                            url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)
                 ? url
@@ -225,6 +245,7 @@ public class ProjectService
         _saveCts?.Cancel();
         Project = new MapProject();
         ImageDataUrl = null;
+        _world = null;
         Normalize();
 
         await SaveNowAsync();

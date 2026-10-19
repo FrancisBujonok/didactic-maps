@@ -125,6 +125,57 @@ public sealed class Mesh
         }
     }
 
+    /// <summary>Celda que contiene el punto (x, y) en píxeles del mapa, o -1 si no hay ninguna.</summary>
+    public int FindCell(double x, double y)
+    {
+        // 1. El centro más cercano. Recorrer todas las celdas son unas 10.000 cuentas, nada
+        //    para una computadora; con millones de celdas convendría una grilla de búsqueda.
+        var best = -1;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < Count; i++)
+        {
+            if (Polygons[i] is null) continue;
+            var dx = X[i] - x;
+            var dy = Y[i] - y;
+            var distance = dx * dx + dy * dy; // sin raíz: para comparar alcanza el cuadrado
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+        if (best < 0) return -1;
+
+        // 2. Los polígonos se arman con baricentros, no con "el centro más cercano", así que
+        //    cerca de un borde el punto puede caer en una vecina. Se confirma con la prueba.
+        if (Contains(best, x, y)) return best;
+        foreach (var n in Neighbors[best])
+        {
+            if (Polygons[n] is not null && Contains(n, x, y)) return n;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Prueba del rayo: desde el punto se traza una línea horizontal hacia la derecha y se
+    /// cuentan los lados del polígono que cruza. Impar: el punto está adentro. Par: afuera.
+    /// </summary>
+    private bool Contains(int cell, double x, double y)
+    {
+        var polygon = Polygons[cell]!;
+        var inside = false;
+        for (int a = 0, b = polygon.Length - 1; a < polygon.Length; b = a++)
+        {
+            var (xa, ya) = polygon[a];
+            var (xb, yb) = polygon[b];
+
+            // ¿El lado cruza la altura del punto, y el cruce queda a la derecha del punto?
+            if ((ya > y) != (yb > y) && x < (xb - xa) * (y - ya) / (yb - ya) + xa)
+                inside = !inside;
+        }
+        return inside;
+    }
+
     /// <summary>
     /// Búsqueda en anchura (BFS) desde varias celdas a la vez: devuelve cuántos pasos de vecina
     /// en vecina hay desde la fuente más cercana hasta cada celda. Solo avanza por las celdas

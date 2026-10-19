@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using MapaMundos.Models;
 
 namespace MapaMundos.Generation;
 
@@ -46,12 +47,17 @@ public static class SvgMapRenderer
         [Biome.Snow] = "#FAF8F2",
     };
 
-    public static string Render(World world)
+    /// <summary>
+    /// Dibuja el mundo. El estilo "Pintado" suaviza costas y difumina la tierra; el estilo
+    /// "Celdas" deja las costas sobre los lados de las celdas y marca el borde de cada una.
+    /// </summary>
+    public static string Render(World world, MapStyle style)
     {
         var mesh = world.Mesh;
+        var painted = style == MapStyle.Painted;
         var svg = new StringBuilder(1 << 20);
 
-        var (oceanShores, lakeShores) = TraceShores(world);
+        var (oceanShores, lakeShores) = TraceShores(world, painted ? SmoothPasses : 0);
         var coastPath = ClosedPath(oceanShores);
         var lakePath = ClosedPath(lakeShores);
 
@@ -60,13 +66,17 @@ public static class SvgMapRenderer
 
         // Molde de la tierra: todos los contornos juntos. Con la regla "evenodd" un contorno
         // dentro de otro es un agujero, así los lagos quedan afuera del molde.
+        svg.Append("<defs>");
+        svg.Append($"<clipPath id=\"tierra\"><path clip-rule=\"evenodd\" d=\"{coastPath}{lakePath}\"/></clipPath>");
+
         // El desenfoque borra los escalones hexagonales entre biomas y alturas: la tierra queda
         // con transiciones suaves, como pintada a mano. La costa no se desenfoca porque se
         // dibuja después, como línea aparte, y el molde recorta el borde borroso.
-        svg.Append("<defs>");
-        svg.Append($"<clipPath id=\"tierra\"><path clip-rule=\"evenodd\" d=\"{coastPath}{lakePath}\"/></clipPath>");
-        svg.Append(CultureInfo.InvariantCulture,
-            $"<filter id=\"suave\"><feGaussianBlur stdDeviation=\"{mesh.Spacing * 0.35:0.#}\"/></filter>");
+        if (painted)
+        {
+            svg.Append(CultureInfo.InvariantCulture,
+                $"<filter id=\"suave\"><feGaussianBlur stdDeviation=\"{mesh.Spacing * 0.35:0.#}\"/></filter>");
+        }
         svg.Append("</defs>");
 
         // ---- 1. Mar
@@ -85,7 +95,7 @@ public static class SvgMapRenderer
         for (var i = 0; i < mesh.Count; i++)
         {
             var polygon = mesh.Polygons[i];
-            var color = CellColor(world, i);
+            var color = painted ? CellColor(world, i) : world.IsLand(i) ? LandColor(world, i) : null;
             if (polygon is null || color is null) continue;
 
             if (!groups.TryGetValue(color, out var path))
@@ -97,11 +107,14 @@ public static class SvgMapRenderer
             path.Append('Z');
         }
 
-        svg.Append("<g clip-path=\"url(#tierra)\"><g filter=\"url(#suave)\">");
-        // El borde del mismo color tapa las rayitas finas que el navegador deja entre
-        // polígonos vecinos al suavizar los bordes.
+        svg.Append(painted ? "<g clip-path=\"url(#tierra)\"><g filter=\"url(#suave)\">" : "<g><g>");
         foreach (var (color, path) in groups)
-            svg.Append($"<path fill=\"{color}\" stroke=\"{color}\" stroke-width=\"0.8\" stroke-linejoin=\"round\" d=\"{path}\"/>");
+        {
+            // Pintado: el borde del mismo color tapa las rayitas finas que el navegador deja entre
+            // polígonos vecinos. Celdas: un borde apenas más oscuro deja ver la grilla.
+            var stroke = painted ? color : Mix(color, Ink, 0.18);
+            svg.Append($"<path fill=\"{color}\" stroke=\"{stroke}\" stroke-width=\"0.8\" stroke-linejoin=\"round\" d=\"{path}\"/>");
+        }
         svg.Append("</g></g>");
 
         // ---- 4. Líneas
@@ -146,7 +159,7 @@ public static class SvgMapRenderer
     /// se juntan 3 celdas, así que por cada vértice de la costa sale exactamente un lado:
     /// buscando el lado que sale de donde terminó el anterior se recorre el contorno entero.
     /// </summary>
-    private static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(World world)
+    private static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(World world, int passes)
     {
         var mesh = world.Mesh;
         var sides = new Dictionary<(long, long), ((double X, double Y) To, bool Lake)>();
@@ -180,7 +193,7 @@ public static class SvgMapRenderer
                 current = next.To;
             }
 
-            (first.Lake ? lake : ocean).Add(SmoothClosed(loop));
+            (first.Lake ? lake : ocean).Add(SmoothClosed(loop, passes));
         }
 
         return (ocean, lake);
@@ -194,9 +207,9 @@ public static class SvgMapRenderer
     /// Suavizado de Chaikin para un contorno cerrado: cada lado se reemplaza por dos puntos,
     /// a 1/4 y a 3/4 de su largo. Las esquinas se "cortan" y, repitiendo, quedan curvas.
     /// </summary>
-    private static List<(double X, double Y)> SmoothClosed(List<(double X, double Y)> points)
+    private static List<(double X, double Y)> SmoothClosed(List<(double X, double Y)> points, int passes)
     {
-        for (var pass = 0; pass < SmoothPasses; pass++)
+        for (var pass = 0; pass < passes; pass++)
         {
             var result = new List<(double X, double Y)>(points.Count * 2);
             for (var i = 0; i < points.Count; i++)
@@ -244,14 +257,10 @@ public static class SvgMapRenderer
         var widths = new[] { 1.0, 1.8, 2.8 };
         var paths = widths.Select(_ => new StringBuilder()).ToArray();
 
-        bool IsRiver(int i) => !world.IsOcean(i) && world.Flux[i] >= world.RiverThreshold;
+        bool IsRiver(int i) => world.RiverSize(i) >= 0;
         (double X, double Y) Center(int i) => (mesh.X[i], mesh.Y[i]);
         (double X, double Y) Shore(int a, int b) => Lerp(Center(a), Center(b), 0.5);
-        int WidthClass(int i)
-        {
-            var ratio = world.Flux[i] / world.RiverThreshold;
-            return ratio < 4 ? 0 : ratio < 12 ? 1 : 2; // arroyo, río, río caudaloso
-        }
+        int WidthClass(int i) => world.RiverSize(i); // 0 arroyo, 1 río, 2 río caudaloso
 
         // Una celda es naciente si es río y ninguna celda de tierra con río drena hacia ella.
         var fedByRiver = new bool[mesh.Count];

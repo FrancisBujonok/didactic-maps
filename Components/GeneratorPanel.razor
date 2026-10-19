@@ -38,6 +38,14 @@
         </select>
     </label>
 
+    <label class="field">
+        <span>Estilo</span>
+        <select @bind="_settings.Style">
+            <option value="@MapStyle.Painted">Pintado</option>
+            <option value="@MapStyle.Cells">Celdas</option>
+        </select>
+    </label>
+
     <div class="btn-row">
         <button class="btn" disabled="@_busy" @onclick="GenerateAsync">Generar</button>
         <button class="btn" disabled="@_busy" @onclick="RandomizeAsync">Todo al azar</button>
@@ -98,6 +106,7 @@
         var random = GeneratorSettings.CreateRandom();
         random.LandRatio = _settings.LandRatio;
         random.CellSize = _settings.CellSize;
+        random.Style = _settings.Style;
         _settings = random;
         await GenerateAsync();
     }
@@ -125,8 +134,8 @@
         {
             var watch = Stopwatch.StartNew();
             var settings = _settings.Clone();
-            var dataUrl = MapGenerator.GenerateDataUrl(settings);
-            await Store.SetGeneratedImageAsync(dataUrl, settings);
+            var (world, dataUrl) = MapGenerator.Generate(settings);
+            await Store.SetGeneratedImageAsync(dataUrl, settings, world);
             _status = $"Mapa generado en {watch.Elapsed.TotalSeconds:0.0} s.";
         }
         finally
