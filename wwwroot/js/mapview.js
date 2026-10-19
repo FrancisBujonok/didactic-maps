@@ -1,7 +1,8 @@
 // mapview.js - zoom, arrastre y clics sobre el mapa.
 //
 // Lo que ocurre todo el tiempo (mover el mouse, usar la rueda) se resuelve acá, en JavaScript.
-// A C# solo se le avisa de lo importante: un clic en el mapa o un pin que se movió.
+// A C# solo se le avisa de lo importante: un clic en el mapa, un pin que se movió o las
+// celdas que pinta el pincel de selección (Shift + arrastrar en "Ver celdas").
 //
 // Idea clave: el mapa (.world) tiene el tamaño real de la imagen y se mueve/escala con una
 // transformación CSS: translate(x, y) scale(escala). Los pines están DENTRO de .world, así que
@@ -116,8 +117,16 @@ export function init(viewport, world, dotnet) {
     if (e.button !== 0 && e.button !== 1) return; // izquierdo o rueda
     const pinEl = e.button === 0 ? e.target.closest('.pin') : null;
 
+    // Shift + arrastrar en el modo "Ver celdas" pinta la selección en vez de mover el mapa.
+    // El modo se sabe por la clase que Blazor le pone al visor.
+    const painting = e.button === 0 && !pinEl && e.shiftKey && viewport.classList.contains('inspecting');
+    if (painting) {
+      const p = toMap(e.clientX, e.clientY);
+      dotnet.invokeMethodAsync('OnCellPaint', clamp(p.x, 0, 1), clamp(p.y, 0, 1), true);
+    }
+
     drag = {
-      kind: pinEl ? 'pin' : 'pan',
+      kind: pinEl ? 'pin' : painting ? 'paint' : 'pan',
       button: e.button,
       pinEl,
       startX: e.clientX,
@@ -142,6 +151,9 @@ export function init(viewport, world, dotnet) {
       s.x = drag.originX + dx;
       s.y = drag.originY + dy;
       apply();
+    } else if (drag.kind === 'paint') {
+      const p = toMap(e.clientX, e.clientY);
+      dotnet.invokeMethodAsync('OnCellPaint', clamp(p.x, 0, 1), clamp(p.y, 0, 1), false);
     } else {
       const p = toMap(e.clientX, e.clientY);
       drag.pos = { x: clamp(p.x, 0, 1), y: clamp(p.y, 0, 1) };
@@ -161,6 +173,8 @@ export function init(viewport, world, dotnet) {
       }
       return; // el clic simple sobre un pin lo maneja Blazor (selecciona el pin)
     }
+
+    if (d.kind === 'paint') return; // la celda del clic ya se pintó al apretar
 
     if (!d.moved && d.button === 0) {
       const p = toMap(e.clientX, e.clientY);

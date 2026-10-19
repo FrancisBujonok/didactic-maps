@@ -111,13 +111,12 @@
 
                 @* Contorno de la celda seleccionada. El SVG tiene el mismo tamaño que el mapa
                    generado, así que los vértices de la malla se usan tal cual. *@
-                @if (SelectedCellPolygon is { } polygon)
+                @if (SelectedCellsPath is { } path)
                 {
                     var world = Store.GetWorld()!;
                     <svg class="cell-highlight" viewBox="0 0 @F(world.Mesh.Width) @F(world.Mesh.Height)"
                          preserveAspectRatio="none" aria-hidden="true">
-                        <polygon class="halo" points="@polygon" />
-                        <polygon class="line" points="@polygon" />
+                        <path d="@path" />
                     </svg>
                 }
 
@@ -214,13 +213,17 @@
 
             <button class="btn danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
         }
-        else if (Store.Loaded && _selectedCell is { } cell && Store.WorldReady)
+        else if (Store.Loaded && _selectedCells.Count > 0 && Store.WorldReady)
         {
-            <CellInfo World="Store.GetWorld()!" Cell="cell" />
+            <CellPanel World="Store.GetWorld()!" Cells="_selectedCells"
+                       OnClearSelection="ClearCellSelection" OnEdited="OnCellsEdited" />
         }
         else if (Store.Loaded && _mode == Mode.Inspect)
         {
-            <p class="muted">Hacé clic en el mapa para ver los datos de una celda.</p>
+            <p class="muted">
+                Hacé clic en el mapa para ver los datos de una celda. Shift + clic agrega o quita
+                celdas; Shift + arrastrar las pinta.
+            </p>
         }
         else if (Store.Loaded)
         {
@@ -244,7 +247,10 @@
     private Mode _mode = Mode.Navigate;
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
-    private int? _selectedCell; // índice de la celda en la malla del mundo generado
+    private readonly HashSet<int> _selectedCells = new(); // índices de celdas de la malla del mundo generado
+    private bool _paintAdds;                  // el pincel agrega (true) o quita (false) celdas
+    private (double X, double Y) _lastPaint;  // último punto pintado, en píxeles del mapa
+    private int _lastPaintCell = -1;
     private bool _showLabels = true;
     private bool _needsFit;
     private string _message = "";
@@ -318,13 +324,14 @@
         {
             // El clic llega normalizado (0 a 1): se pasa a píxeles del mapa generado.
             var cell = world.Mesh.FindCell(x * world.Mesh.Width, y * world.Mesh.Height);
-            _selectedCell = cell >= 0 ? cell : null;
+            _selectedCells.Clear();
+            if (cell >= 0) _selectedCells.Add(cell);
             _selectedPinId = null;
         }
         else
         {
             _selectedPinId = null;
-            _selectedCell = null;
+            _selectedCells.Clear();
         }
 
         StateHasChanged();
@@ -342,7 +349,63 @@
         StateHasChanged();
     });
 
+    /// <summary>
+    /// mapview.js avisa de cada punto del pincel de selección (Shift + arrastrar en "Ver celdas").
+    /// start es true al apretar el botón: si esa primera celda ya estaba elegida, el pincel borra
+    /// en vez de agregar. Así Shift + clic sobre una celda elegida la quita.
+    /// </summary>
+    [JSInvokable]
+    public Task OnCellPaint(double x, double y, bool start) => InvokeAsync(() =>
+    {
+        if (_mode != Mode.Inspect || !Store.WorldReady) return;
+
+        var mesh = Store.GetWorld()!.Mesh;
+        var px = x * mesh.Width;
+        var py = y * mesh.Height;
+
+        if (start)
+        {
+            var first = mesh.FindCell(px, py);
+            if (first < 0) return;
+            _paintAdds = !_selectedCells.Contains(first);
+            Paint(first);
+            _lastPaint = (px, py);
+            _lastPaintCell = first;
+            _selectedPinId = null;
+            StateHasChanged();
+            return;
+        }
+
+        // Entre un aviso del mouse y el siguiente el cursor puede saltar varias celdas: se recorre
+        // el tramo en pasos de media celda para no dejar huecos en la pincelada.
+        var (lastX, lastY) = _lastPaint;
+        var length = Math.Sqrt((px - lastX) * (px - lastX) + (py - lastY) * (py - lastY));
+        var steps = Math.Max(1, (int)Math.Ceiling(length / (mesh.Spacing / 2)));
+        for (var s = 1; s <= steps; s++)
+        {
+            var t = (double)s / steps;
+            var cell = mesh.FindCell(lastX + (px - lastX) * t, lastY + (py - lastY) * t, _lastPaintCell);
+            if (cell < 0) continue;
+            Paint(cell);
+            _lastPaintCell = cell;
+        }
+        _lastPaint = (px, py);
+        StateHasChanged();
+    });
+
+    private void Paint(int cell)
+    {
+        if (_paintAdds) _selectedCells.Add(cell);
+        else _selectedCells.Remove(cell);
+    }
+
     // ------------------------------------------------------------ acciones
+
+    private void ClearCellSelection() => _selectedCells.Clear();
+
+    // El panel de celdas cambió el mapa: no hay nada que hacer acá, pero recibir el aviso hace
+    // que el editor se vuelva a dibujar con la imagen nueva.
+    private void OnCellsEdited() { }
 
     private void OnDataChanged() => Store.RequestSave();
 
@@ -351,13 +414,13 @@
     private void OnMapGenerated()
     {
         _needsFit = true;
-        _selectedCell = null;
+        _selectedCells.Clear();
     }
 
     private void SelectPin(Guid id)
     {
         _selectedPinId = id;
-        _selectedCell = null;
+        _selectedCells.Clear();
     }
 
     /// <summary>
@@ -408,7 +471,7 @@
         if (await Store.SetImageAsync(file))
         {
             _needsFit = true;
-            _selectedCell = null;
+            _selectedCells.Clear();
             if (_mode == Mode.Inspect)
             {
                 _mode = Mode.Navigate; // una imagen cargada no tiene celdas
@@ -472,7 +535,7 @@
     private void ResetSelection()
     {
         _selectedPinId = null;
-        _selectedCell = null;
+        _selectedCells.Clear();
         _activeLayerId = Store.Project.Layers[0].Id;
         _needsFit = !string.IsNullOrEmpty(Store.ImageDataUrl);
 
@@ -540,16 +603,23 @@
     };
 
     /// <summary>
-    /// Vértices de la celda seleccionada en el formato del atributo "points" de SVG
-    /// ("x1,y1 x2,y2 ..."), o null si no hay celda para resaltar.
+    /// Contorno de las celdas seleccionadas como un único path de SVG ("M x y L x y ... Z" por
+    /// celda), o null si no hay nada para resaltar. Un solo path es mucho más liviano para el
+    /// navegador que un polígono por celda cuando se pintan cientos.
     /// </summary>
-    private string? SelectedCellPolygon
+    private string? SelectedCellsPath
     {
         get
         {
-            if (_selectedCell is not { } cell || !Store.WorldReady) return null;
-            var polygon = Store.GetWorld()?.Mesh.Polygons[cell];
-            return polygon is null ? null : string.Join(" ", polygon.Select(p => $"{F(p.X)},{F(p.Y)}"));
+            if (_selectedCells.Count == 0 || !Store.WorldReady) return null;
+            var mesh = Store.GetWorld()!.Mesh;
+            var d = new System.Text.StringBuilder();
+            foreach (var cell in _selectedCells)
+            {
+                if (mesh.Polygons[cell] is not { } polygon) continue;
+                d.Append('M').Append(string.Join('L', polygon.Select(p => $"{F(p.X)} {F(p.Y)}"))).Append('Z');
+            }
+            return d.Length == 0 ? null : d.ToString();
         }
     }
 

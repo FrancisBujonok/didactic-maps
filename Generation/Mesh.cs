@@ -125,25 +125,15 @@ public sealed class Mesh
         }
     }
 
-    /// <summary>Celda que contiene el punto (x, y) en píxeles del mapa, o -1 si no hay ninguna.</summary>
-    public int FindCell(double x, double y)
+    /// <summary>
+    /// Celda que contiene el punto (x, y) en píxeles del mapa, o -1 si no hay ninguna.
+    /// Si se conoce una celda cercana (hint), se busca caminando desde ella, que es mucho más
+    /// rápido que revisar todas: sirve para el pincel, que pide celdas vecinas una tras otra.
+    /// </summary>
+    public int FindCell(double x, double y, int hint = -1)
     {
-        // 1. El centro más cercano. Recorrer todas las celdas son unas 10.000 cuentas, nada
-        //    para una computadora; con millones de celdas convendría una grilla de búsqueda.
-        var best = -1;
-        var bestDistance = double.MaxValue;
-        for (var i = 0; i < Count; i++)
-        {
-            if (Polygons[i] is null) continue;
-            var dx = X[i] - x;
-            var dy = Y[i] - y;
-            var distance = dx * dx + dy * dy; // sin raíz: para comparar alcanza el cuadrado
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = i;
-            }
-        }
+        // 1. El centro más cercano.
+        var best = hint >= 0 && Polygons[hint] is not null ? WalkToNearest(hint, x, y) : NearestByScan(x, y);
         if (best < 0) return -1;
 
         // 2. Los polígonos se arman con baricentros, no con "el centro más cercano", así que
@@ -154,6 +144,57 @@ public sealed class Mesh
             if (Polygons[n] is not null && Contains(n, x, y)) return n;
         }
         return best;
+    }
+
+    // Revisa todas las celdas. Son unas 10.000 cuentas, nada para una computadora para un clic;
+    // con millones de celdas convendría una grilla de búsqueda.
+    private int NearestByScan(double x, double y)
+    {
+        var best = -1;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < Count; i++)
+        {
+            if (Polygons[i] is null) continue;
+            var distance = Distance2(i, x, y);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    // Caminata: desde una celda, se pasa a la vecina más cercana al punto mientras haya una más
+    // cercana que la actual. En una malla casi regular llega al centro más cercano en pocos pasos.
+    private int WalkToNearest(int start, double x, double y)
+    {
+        var current = start;
+        var currentDistance = Distance2(current, x, y);
+        while (true)
+        {
+            var next = -1;
+            foreach (var n in Neighbors[current])
+            {
+                if (Polygons[n] is null) continue;
+                var distance = Distance2(n, x, y);
+                if (distance < currentDistance)
+                {
+                    currentDistance = distance;
+                    next = n;
+                }
+            }
+            if (next < 0) return current;
+            current = next;
+        }
+    }
+
+    // Distancia al cuadrado: sin raíz, porque para comparar distancias alcanza con el cuadrado.
+    private double Distance2(int cell, double x, double y)
+    {
+        var dx = X[cell] - x;
+        var dy = Y[cell] - y;
+        return dx * dx + dy * dy;
     }
 
     /// <summary>

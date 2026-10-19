@@ -1,23 +1,6 @@
-namespace MapaMundos.Generation;
+using MapaMundos.Models;
 
-/// <summary>Tipos de terreno. El valor de cada celda lo decide la etapa de biomas.</summary>
-public enum Biome
-{
-    Ocean,
-    Lake,
-    Ice,
-    Tundra,
-    Taiga,
-    Grassland,
-    TemperateForest,
-    TemperateRainforest,
-    Desert,
-    Savanna,
-    TropicalForest,
-    Jungle,
-    Mountain,
-    Snow
-}
+namespace MapaMundos.Generation;
 
 /// <summary>
 /// Los datos del mundo generado: un valor por celda en cada arreglo (el índice es la celda).
@@ -105,27 +88,4 @@ public sealed class World
     /// hasta 0 °C, templado hasta 15 °C y tropical por encima.
     /// </summary>
     public double TemperatureCelsius(int i) => -15 + 50 * Temperature[i];
-}
-
-/// <summary>Nombres de los biomas para mostrar en la interfaz.</summary>
-public static class BiomeNames
-{
-    public static string Of(Biome biome) => biome switch
-    {
-        Biome.Ocean => "Mar",
-        Biome.Lake => "Lago",
-        Biome.Ice => "Hielo",
-        Biome.Tundra => "Tundra",
-        Biome.Taiga => "Taiga",
-        Biome.Grassland => "Pradera",
-        Biome.TemperateForest => "Bosque templado",
-        Biome.TemperateRainforest => "Bosque lluvioso templado",
-        Biome.Desert => "Desierto",
-        Biome.Savanna => "Sabana",
-        Biome.TropicalForest => "Bosque tropical",
-        Biome.Jungle => "Selva",
-        Biome.Mountain => "Montaña",
-        Biome.Snow => "Nieves eternas",
-        _ => biome.ToString()
-    };
 }

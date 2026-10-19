@@ -1,3 +1,5 @@
+using MapaMundos.Models;
+
 namespace MapaMundos.Generation;
 
 /// <summary>

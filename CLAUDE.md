@@ -17,12 +17,16 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Components/MapEditor.razor`: interfaz principal (panel de capas, barra, mapa, ficha del pin).
 - `Components/GeneratorPanel.razor`: panel "Generar mapa" (semillas, tierra, detalle). Edita una copia de `GeneratorSettings` y la guarda al generar.
 - `Components/CellInfo.razor`: ficha de solo lectura de una celda (terreno, altura, temperatura, humedad, río).
+- `Components/CellPanel.razor`: panel de las celdas seleccionadas (una o varias): resumen y herramientas (terreno, subir, bajar, hacer tierra o agua, restaurar).
+- `Models/Biome.cs`: enum `Biome` y `BiomeNames` (nombres en español, lista `Land` de biomas editables). Está en Models porque el proyecto guarda biomas elegidos a mano.
+- `Models/CellEdit.cs`: un cambio a mano sobre una celda (`Cell`, `ElevationDelta`, `Biome?`). Se guardan en `MapProject.CellEdits`.
 - `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda y estilo (`MapStyle`: Pintado o Celdas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
   - `Rng.cs` (Mulberry32 con semilla), `PerlinNoise.cs` (ruido y fBm).
   - `Mesh.cs`: grilla hexagonal con puntos desplazados, vecinas fijas por fila y columna, polígonos con baricentros, BFS `Distances`, `FindCell` (centro más cercano y prueba del rayo).
-  - `World.cs`: un arreglo por dato y por celda (altura, agua, lago, clima, drenaje, caudal, bioma), `RiverSize`, conversión a metros y grados, y `BiomeNames` (nombres en español).
-  - `ReliefStage.cs`, `ClimateStage.cs`, `RiverStage.cs`, `BiomeStage.cs`: una etapa por archivo, cada una con su semilla.
+  - `World.cs`: un arreglo por dato y por celda (altura, agua, lago, clima, drenaje, caudal, bioma), `RiverSize` y conversión a metros y grados.
+  - `ReliefStage.cs`, `ClimateStage.cs`, `RiverStage.cs`, `BiomeStage.cs`: una etapa por archivo, cada una con su semilla. `ReliefStage.FindWater` (mar, lagos, distancia a la costa) es público para recalcularlo tras editar alturas.
+  - `EditStage.cs`: aplica las ediciones a mano (alturas después del continente, biomas al final).
   - `SvgMapRenderer.cs`: dibujo en SVG. `MapGenerator.cs`: orquesta todo y devuelve el data URL.
 - `wwwroot/js/mapview.js`: zoom, pan, clics y arrastre de pines.
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
@@ -33,7 +37,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 
 - Blazor WebAssembly standalone, sin backend. Todo se guarda en el navegador.
 - Pines con coordenadas normalizadas (0 a 1), independientes de la resolución de la imagen.
-- Zoom y pan viven en JS. C# solo recibe `OnMapClick` y `OnPinMoved`.
+- Zoom y pan viven en JS. C# solo recibe `OnMapClick`, `OnPinMoved` y `OnCellPaint` (pincel de selección: Shift + arrastrar con el visor en clase `inspecting`).
 - La imagen se guarda aparte del proyecto (clave `image`) y hoy es un data URL.
 - `.world` y `.viewport` no llevan atributo `style` en Razor: los maneja mapview.js.
 - Los números que van a CSS se formatean con `InvariantCulture` (en es-AR el decimal es coma).
@@ -50,6 +54,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - El mundo (`World`) vive en memoria en `ProjectService` y no se guarda. `GetWorld()` lo rearma desde `Project.Generator` si falta (tarda menos de 1 s); se descarta al cargar imagen, importar o empezar proyecto nuevo.
   - Modo "Ver celdas" (`Mode.Inspect`): el clic normalizado se pasa a píxeles del mapa (2000 x 1250) y `FindCell` devuelve la celda. El contorno se dibuja con un SVG en línea dentro de `.world` (contenido propio, no del usuario) con grosor dividido por `--inv-scale`.
   - Unidades mostradas: altura 0 a 1 = 0 a 4500 m, profundidad hasta 5000 m, temperatura 0 a 1 = -15 a 35 °C (elegida para que los límites de biomas caigan cerca de los reales).
+  - Ediciones a mano: se guardan como diferencias por celda (`CellEdit`), no el mundo entero. Orden en `MapGenerator.Build`: continente, alturas editadas (y `FindWater` si cambió alguna), clima, ríos, biomas, biomas editados. Editar un bioma solo redibuja; editar alturas rearma el mundo (cambian costa, clima y ríos). Cada edición tarda 2 a 3 s en el navegador; lo más pesado es redibujar el SVG.
+  - Las ediciones se conservan al generar salvo que cambie la malla (`MapGenerator.ChangesMesh`: semilla de continente o detalle); entonces se avisa y se borran. Cargar una imagen de archivo también las borra.
+  - Selección: `HashSet<int>` en `MapEditor`. Clic elige una; Shift + clic agrega o quita; Shift + arrastrar pinta. Si el pincel empieza sobre una celda elegida, borra. El pincel recorre el tramo entre avisos del mouse en pasos de media celda y usa `FindCell` con `hint` (caminata desde la última celda).
   - Colores del mapa fijos (no dependen del tema), apagados para que resalten pines y etiquetas.
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
 
@@ -72,10 +79,13 @@ Resuelto:
 
 - 2026-10-19: estilo "Celdas" y modo "Ver celdas" con ficha de celda (pedido por el autor). Probado en vista previa: ficha correcta en tierra y mar, contorno visible, rearmado del mundo tras recargar en 0.76 s.
 
+- 2026-10-19: edición a mano de celdas con selección múltiple (pedido por el autor). Probado: el pincel agrega y borra sin mover el mapa; terreno, subir y hacer agua cambian la imagen; las 24 ediciones se guardan, sobreviven a recargar y "Restaurar" vuelve la celda a lo generado. Prueba fuera de la app: hacer tierra un bloque de mar recalcula la costa y rearmar con las ediciones da el mismo mundo.
+
 Pendiente:
 
-- Próximo paso acordado: editar a mano la celda seleccionada (cambiar bioma, subir o bajar tierra), y después agrupar celdas en regiones o reinos.
-- Ejercicio del autor: agregar "Distancia a la costa" a `CellInfo.razor` con `World.CoastDistance`.
+- Próximo paso posible: agrupar celdas en regiones o reinos (nombre, color, borde dibujado), o deshacer la última edición.
+- Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`).
+- Edición: cada cambio redibuja el SVG completo (2 a 3 s). Si molesta, dibujar solo lo que cambió o mostrar la selección mientras se redibuja.
 - Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.
 - Generador: sombra de lluvia, nombres de lugares, símbolos de montaña. Ejercicio del autor: bioma "Pantano" en `BiomeStage.Classify`.
 - Íconos SVG propios por tipo de pin (hoy todos son un círculo).

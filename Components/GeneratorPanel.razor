@@ -2,6 +2,7 @@
 @using MapaMundos.Generation
 @inject ProjectService Store
 @inject IJSRuntime JS
+@implements IDisposable
 
 @* Panel para generar un mapa al azar. Edita una copia de los parámetros y solo la guarda
    en el proyecto cuando se genera, junto con la imagen. *@
@@ -52,6 +53,14 @@
     </div>
 
     <p class="hint" role="status">@(_status ?? "Reemplaza la imagen base. Los pines se mantienen.")</p>
+
+    @if (Store.Project.CellEdits.Count > 0)
+    {
+        <p class="hint">
+            @Store.Project.CellEdits.Count celdas con cambios a mano. Se conservan al generar,
+            salvo que cambies la semilla del continente o el detalle.
+        </p>
+    }
 </details>
 
 @code {
@@ -84,6 +93,14 @@
         set => _settings.LandRatio = value / 100.0;
     }
 
+    // Las ediciones a mano se hacen desde otro panel. Cada vez que el proyecto se guarda, el
+    // servicio avisa, y este panel se vuelve a dibujar para mostrar la cantidad actualizada.
+    protected override void OnInitialized() => Store.StatusChanged += OnStoreChanged;
+
+    public void Dispose() => Store.StatusChanged -= OnStoreChanged;
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
     protected override void OnParametersSet()
     {
         // Si se importó otro proyecto o se empezó uno nuevo, se muestran sus parámetros.
@@ -107,11 +124,12 @@
         random.LandRatio = _settings.LandRatio;
         random.CellSize = _settings.CellSize;
         random.Style = _settings.Style;
-        _settings = random;
-        await GenerateAsync();
+        await GenerateAsync(random);
     }
 
-    private async Task GenerateAsync()
+    private Task GenerateAsync() => GenerateAsync(_settings.Clone());
+
+    private async Task GenerateAsync(GeneratorSettings settings)
     {
         if (_busy) return;
 
@@ -121,6 +139,22 @@
         {
             return;
         }
+
+        // Las ediciones a mano apuntan a celdas por número. Si cambia la semilla del continente
+        // o el detalle, las celdas son otras y las ediciones quedarían en lugares al azar.
+        var edits = Store.Project.CellEdits.Count;
+        var previous = Store.Project.Generator;
+        if (edits > 0 && previous is not null && MapGenerator.ChangesMesh(previous, settings))
+        {
+            if (!await JS.InvokeAsync<bool>("confirm",
+                    $"Cambia la forma del mundo: se pierden los cambios a mano de {edits} celdas. ¿Continuar?"))
+            {
+                return;
+            }
+            Store.ClearCellEdits();
+        }
+
+        _settings = settings.Clone();
 
         _busy = true;
         _status = "Generando...";
@@ -133,8 +167,7 @@
         try
         {
             var watch = Stopwatch.StartNew();
-            var settings = _settings.Clone();
-            var (world, dataUrl) = MapGenerator.Generate(settings);
+            var (world, dataUrl) = MapGenerator.Generate(settings, Store.Project.CellEdits);
             await Store.SetGeneratedImageAsync(dataUrl, settings, world);
             _status = $"Mapa generado en {watch.Elapsed.TotalSeconds:0.0} s.";
         }

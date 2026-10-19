@@ -65,8 +65,23 @@ public static class ReliefStage
             world.Elevation[i] = v > seaLevel
                 ? (v - seaLevel) / (highest - seaLevel)
                 : (v - seaLevel) / (seaLevel - lowest);
-            world.Water[i] = world.Elevation[i] <= 0;
         }
+
+        FindWater(world);
+    }
+
+    /// <summary>
+    /// Decide qué celdas son agua, cuáles de ellas son lagos y a qué distancia de la costa
+    /// está cada celda. Es público porque, si el autor cambia alturas a mano, hay que volver
+    /// a calcularlo con las alturas nuevas.
+    /// </summary>
+    public static void FindWater(World world)
+    {
+        var mesh = world.Mesh;
+
+        // El borde de la grilla es siempre mar, aunque una edición lo haya levantado.
+        for (var i = 0; i < mesh.Count; i++)
+            world.Water[i] = mesh.IsBorder[i] || world.Elevation[i] <= 0;
 
         // Lagos: el agua que no se puede alcanzar desde el borde del mapa nadando
         // de celda de agua en celda de agua está encerrada por tierra.

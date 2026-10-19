@@ -12,6 +12,9 @@ public class MapProject
 
     /// <summary>Parámetros con los que se generó la imagen base, o null si la imagen se cargó de un archivo.</summary>
     public GeneratorSettings? Generator { get; set; }
+
+    /// <summary>Cambios hechos a mano sobre celdas del mapa generado (ver CellEdit).</summary>
+    public List<CellEdit> CellEdits { get; set; } = new();
 }
 
 /// <summary>

@@ -85,6 +85,18 @@ public class ProjectService
         }
 
         Project.Generator?.Normalize();
+
+        // Ediciones a mano: sin celdas inválidas, sin vacías y una sola por celda (la última).
+        Project.CellEdits = (Project.CellEdits ?? new())
+            .Where(e => e is not null && e.Cell >= 0 && !e.IsEmpty)
+            .GroupBy(e => e.Cell)
+            .Select(g => g.Last())
+            .ToList();
+        foreach (var edit in Project.CellEdits)
+        {
+            if (edit.Biome is { } b && (!Enum.IsDefined(b) || !BiomeNames.Land.Contains(b)))
+                edit.Biome = null;
+        }
     }
 
     // ---------------------------------------------------------------- capas
@@ -172,6 +184,7 @@ public class ProjectService
 
         ImageDataUrl = file.Content;
         Project.Generator = null; // la imagen ya no es la generada
+        Project.CellEdits.Clear(); // y las ediciones eran de las celdas de ese mapa
         _world = null;
         RequestSave();
         await SaveImageAsync();
@@ -199,7 +212,7 @@ public class ProjectService
     public World? GetWorld()
     {
         if (Project.Generator is null) return null;
-        _world ??= MapGenerator.Build(Project.Generator);
+        _world ??= MapGenerator.Build(Project.Generator, Project.CellEdits);
         return _world;
     }
 
@@ -249,6 +262,97 @@ public class ProjectService
         Normalize();
 
         await SaveNowAsync();
+        await SaveImageAsync();
+    }
+
+    // ------------------------------------------------------- ediciones a mano
+
+    /// <summary>Cuánto se sube o se baja la tierra con cada clic (la altura va de -1 a 1).</summary>
+    public const double ElevationStep = 0.1;
+
+    /// <summary>True si alguna de estas celdas tiene cambios hechos a mano.</summary>
+    public bool HasEdits(IEnumerable<int> cells)
+    {
+        var set = cells.ToHashSet();
+        return Project.CellEdits.Any(e => set.Contains(e.Cell));
+    }
+
+    /// <summary>Borra todas las ediciones (por ejemplo, al generar un mundo con otras celdas).</summary>
+    public void ClearCellEdits()
+    {
+        Project.CellEdits.Clear();
+        RequestSave();
+    }
+
+    /// <summary>Fuerza un bioma en las celdas elegidas que son tierra.</summary>
+    public Task SetBiomeAsync(IReadOnlyCollection<int> cells, Biome biome) =>
+        EditCellsAsync(cells, (edit, world) =>
+        {
+            if (world.IsLand(edit.Cell)) edit.Biome = biome;
+        }, terrainChanged: false);
+
+    /// <summary>Sube (delta positivo) o baja (negativo) la tierra de las celdas elegidas.</summary>
+    public Task RaiseAsync(IReadOnlyCollection<int> cells, double delta) =>
+        EditCellsAsync(cells, (edit, _) => edit.ElevationDelta += delta, terrainChanged: true);
+
+    /// <summary>
+    /// Convierte las celdas en agua o en tierra. Se calcula cuánto hay que sumar para dejarlas
+    /// apenas debajo o apenas encima del nivel del mar; las que ya son lo pedido no cambian.
+    /// </summary>
+    public Task SetWaterAsync(IReadOnlyCollection<int> cells, bool water) =>
+        EditCellsAsync(cells, (edit, world) =>
+        {
+            var current = world.Elevation[edit.Cell];
+            if (water && current > 0) edit.ElevationDelta += -0.05 - current;
+            if (!water && current <= 0) edit.ElevationDelta += 0.05 - current;
+        }, terrainChanged: true);
+
+    /// <summary>Quita los cambios a mano de las celdas elegidas: vuelven a ser como las generó el mapa.</summary>
+    public async Task ResetCellsAsync(IReadOnlyCollection<int> cells)
+    {
+        var set = cells.ToHashSet();
+        Project.CellEdits.RemoveAll(e => set.Contains(e.Cell));
+        await RedrawAsync(rebuild: true);
+    }
+
+    /// <summary>
+    /// Busca (o crea) la edición de cada celda, le aplica el cambio y redibuja el mapa.
+    /// terrainChanged indica si cambió la altura: entonces hay que rearmar el mundo entero,
+    /// porque cambian la costa, el clima y los ríos. Si solo cambió el bioma, alcanza con
+    /// redibujar, que es bastante más rápido.
+    /// </summary>
+    private async Task EditCellsAsync(IReadOnlyCollection<int> cells, Action<CellEdit, World> change, bool terrainChanged)
+    {
+        var world = GetWorld();
+        if (world is null) return;
+
+        var byCell = Project.CellEdits.ToDictionary(e => e.Cell);
+        foreach (var cell in cells)
+        {
+            if (!byCell.TryGetValue(cell, out var edit))
+            {
+                edit = new CellEdit { Cell = cell };
+                byCell[cell] = edit;
+                Project.CellEdits.Add(edit);
+            }
+            change(edit, world);
+        }
+
+        Project.CellEdits.RemoveAll(e => e.IsEmpty);
+        await RedrawAsync(terrainChanged);
+    }
+
+    private async Task RedrawAsync(bool rebuild)
+    {
+        if (Project.Generator is not { } settings) return;
+
+        if (rebuild || _world is null)
+            _world = MapGenerator.Build(settings, Project.CellEdits);
+        else
+            EditStage.ApplyBiomes(_world, Project.CellEdits);
+
+        ImageDataUrl = MapGenerator.Draw(_world, settings.Style);
+        RequestSave();
         await SaveImageAsync();
     }
 

@@ -13,7 +13,8 @@ public static class MapGenerator
     public const double Width = 2000;
     public const double Height = 1250;
 
-    public static World Build(GeneratorSettings settings)
+    /// <summary>Arma el mundo con las semillas y le aplica las ediciones hechas a mano.</summary>
+    public static World Build(GeneratorSettings settings, IReadOnlyList<CellEdit> edits)
     {
         // La malla usa la semilla del continente con un desplazamiento, para que su secuencia
         // de números no sea la misma que usa el ruido del relieve.
@@ -21,21 +22,38 @@ public static class MapGenerator
         var world = new World(mesh);
 
         ReliefStage.Apply(world, settings.ContinentSeed, settings.LandRatio);
+        if (EditStage.ApplyElevation(world, edits))
+            ReliefStage.FindWater(world); // la costa cambió: se recalculan mar, lagos y distancias
+
         ClimateStage.Apply(world, settings.ClimateSeed);
         RiverStage.Apply(world, settings.RiverSeed);
         BiomeStage.Apply(world, settings.BiomeSeed);
+        EditStage.ApplyBiomes(world, edits);
 
         return world;
     }
 
     /// <summary>
     /// Genera el mundo y su dibujo. Devuelve los dos: el data URL para usar de imagen base y
-    /// el mundo, que se guarda en memoria para consultar las celdas.
+    /// el mundo, que se guarda en memoria para consultar y editar las celdas.
     /// </summary>
-    public static (World World, string DataUrl) Generate(GeneratorSettings settings)
+    public static (World World, string DataUrl) Generate(GeneratorSettings settings, IReadOnlyList<CellEdit> edits)
     {
-        var world = Build(settings);
-        var svg = SvgMapRenderer.Render(world, settings.Style);
-        return (world, "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg)));
+        var world = Build(settings, edits);
+        return (world, Draw(world, settings.Style));
     }
+
+    /// <summary>Dibuja un mundo ya armado y lo devuelve como data URL.</summary>
+    public static string Draw(World world, MapStyle style)
+    {
+        var svg = SvgMapRenderer.Render(world, style);
+        return "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
+    }
+
+    /// <summary>
+    /// True si con estos parámetros la malla sale distinta (otras celdas): entonces las
+    /// ediciones a mano ya no apuntan a las mismas celdas y hay que descartarlas.
+    /// </summary>
+    public static bool ChangesMesh(GeneratorSettings before, GeneratorSettings after) =>
+        before.ContinentSeed != after.ContinentSeed || before.CellSize != after.CellSize;
 }

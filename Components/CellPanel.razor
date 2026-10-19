@@ -1,0 +1,108 @@
+@using MapaMundos.Generation
+@inject ProjectService Store
+
+@* Panel de las celdas seleccionadas: sus datos y las herramientas para editarlas a mano. *@
+<h2>@(Cells.Count == 1 ? "Celda" : $"{Cells.Count} celdas")</h2>
+
+@if (Cells.Count == 1)
+{
+    <CellInfo World="World" Cell="Cells.First()" />
+}
+else
+{
+    @* Resumen: cuántas celdas hay de cada terreno, de más a menos. *@
+    <dl class="facts">
+        @foreach (var group in Cells.GroupBy(c => World.Biomes[c]).OrderByDescending(g => g.Count()).Take(6))
+        {
+            <dt>@BiomeNames.Of(group.Key)</dt>
+            <dd>@group.Count()</dd>
+        }
+    </dl>
+}
+
+<h3>Terreno</h3>
+<div class="tool-row">
+    <select @bind="_biome" aria-label="Terreno nuevo">
+        @foreach (var biome in BiomeNames.Land)
+        {
+            <option value="@biome">@BiomeNames.Of(biome)</option>
+        }
+    </select>
+    <button class="btn" disabled="@(_busy || LandCount == 0)"
+            @onclick="() => RunAsync(() => Store.SetBiomeAsync(Selection, _biome))">Aplicar</button>
+</div>
+@if (LandCount < Cells.Count)
+{
+    <p class="hint">El terreno solo cambia en las celdas de tierra.</p>
+}
+
+<h3>Altura</h3>
+<div class="btn-row">
+    <button class="btn" disabled="@_busy"
+            @onclick="() => RunAsync(() => Store.RaiseAsync(Selection, ProjectService.ElevationStep))">Subir</button>
+    <button class="btn" disabled="@_busy"
+            @onclick="() => RunAsync(() => Store.RaiseAsync(Selection, -ProjectService.ElevationStep))">Bajar</button>
+    <button class="btn" disabled="@_busy"
+            @onclick="() => RunAsync(() => Store.SetWaterAsync(Selection, water: false))">Hacer tierra</button>
+    <button class="btn" disabled="@_busy"
+            @onclick="() => RunAsync(() => Store.SetWaterAsync(Selection, water: true))">Hacer agua</button>
+</div>
+
+<div class="btn-row">
+    <button class="btn" disabled="@(_busy || !Store.HasEdits(Cells))"
+            title="Quita los cambios a mano: las celdas vuelven a ser como las generó el mapa"
+            @onclick="() => RunAsync(() => Store.ResetCellsAsync(Selection))">Restaurar</button>
+    <button class="btn" disabled="@_busy" @onclick="OnClearSelection">Quitar selección</button>
+</div>
+
+<p class="hint" role="status">
+    @(_status ?? "Shift + clic agrega o quita una celda. Shift + arrastrar pinta varias.")
+</p>
+
+@code {
+    [Parameter, EditorRequired] public World World { get; set; } = default!;
+
+    /// <summary>Índices de las celdas seleccionadas.</summary>
+    [Parameter, EditorRequired] public IReadOnlyCollection<int> Cells { get; set; } = default!;
+
+    /// <summary>Se pide vaciar la selección.</summary>
+    [Parameter] public EventCallback OnClearSelection { get; set; }
+
+    /// <summary>Se dispara después de cada edición, para que el editor muestre el mapa nuevo.</summary>
+    [Parameter] public EventCallback OnEdited { get; set; }
+
+    private Biome _biome = Biome.Grassland;
+    private bool _busy;
+    private string? _status;
+
+    private int LandCount => Cells.Count(World.IsLand);
+
+    /// <summary>
+    /// Ejecuta una edición mostrando "Aplicando..." mientras tanto. Recibe una función que crea
+    /// la tarea, y no la tarea ya creada: si los botones llamaran a Store directamente, la edición
+    /// arrancaría antes de que el navegador alcance a mostrar el aviso.
+    /// </summary>
+    private async Task RunAsync(Func<Task> edit)
+    {
+        _busy = true;
+        _status = "Aplicando...";
+        StateHasChanged();
+        await Task.Delay(1); // deja que el navegador muestre el aviso antes del trabajo pesado
+
+        try
+        {
+            await edit();
+            _status = null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await OnEdited.InvokeAsync();
+    }
+
+    // Copia de la selección: mientras se aplica la edición el usuario podría seguir pintando,
+    // y la edición tiene que trabajar sobre las celdas que había al apretar el botón.
+    private int[] Selection => Cells.ToArray();
+}
