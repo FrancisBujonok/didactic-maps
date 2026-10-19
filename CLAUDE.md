@@ -20,7 +20,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Components/CellPanel.razor`: panel de las celdas seleccionadas (una o varias): resumen y herramientas (terreno, subir, bajar, hacer tierra o agua, restaurar).
 - `Models/Biome.cs`: enum `Biome` y `BiomeNames` (nombres en español, lista `Land` de biomas editables). Está en Models porque el proyecto guarda biomas elegidos a mano.
 - `Models/CellEdit.cs`: un cambio a mano sobre una celda (`Cell`, `ElevationDelta`, `Biome?`). Se guardan en `MapProject.CellEdits`.
-- `Models/Region.cs`: reino con `Id`, `Name`, `Color`, `Cells` (lista de índices) y paleta. Se guardan en `MapProject.Regions`.
+- `Models/Region.cs`: reino con `Id`, `Name`, `Color`, `Cells` (lista de índices), `CapitalPinId` y paleta. Se guardan en `MapProject.Regions`.
+- `Models/MapProject.cs` también tiene `MapPin.KindGroups` (tipos de pin agrupados; `Kinds` es la lista plana) y `MapLayer.ContrastingInk` (tinta o papel según contraste WCAG con un color de fondo).
+- `Components/PinIcon.razor`: íconos de los tipos de pin y de la capital (estrella), como trazos de path en un diccionario.
 - `Components/RegionPanel.razor`: sección "Reinos" del panel izquierdo (crear, renombrar, color, borrar). Las celdas se asignan desde `CellPanel` ("Reino" + "Asignar").
 - `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda y estilo (`MapStyle`: Pintado o Celdas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
@@ -65,7 +67,14 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Las vistas se dibujan al pedirlas y se guardan en memoria (`ProjectService._viewCache`); `SetWorld` vacía el caché y `RegionsChanged` descarta solo la de reinos. La primera vez tarda unos 3,5 s en el navegador ("Preparando la vista..."). Si se elige otra vista mientras una se prepara, gana la última elegida (`_requestedView`).
   - Nombres de reino: texto HTML como las etiquetas de pines (tipografía de la app, escala inversa), en la celda del reino más cercana al promedio de sus celdas. Los SVG en `<img>` no pueden usar las fuentes web de la página, por eso no van dentro del SVG.
   - Los paneles hijos con datos que cambian desde otro panel (`GeneratorPanel`, `RegionPanel`) se suscriben a `ProjectService.StatusChanged` para redibujarse; si no, Blazor no los vuelve a dibujar.
+  - Capitales: el reino guarda `CapitalPinId`; el reino de un pin no se guarda, se calcula por la celda bajo su posición (`ProjectService.RegionAt`), así sigue al pin si se lo mueve. Un reino tiene una capital como máximo y un pin es capital de uno como máximo. Si la capital queda fuera de su reino, la ficha avisa y no se borra el vínculo; si se borra el pin, el reino queda sin capital. `SelectPin` rearma el mundo si hace falta, para no hacerlo en medio del dibujo de la ficha.
   - Colores del mapa fijos (no dependen del tema), apagados para que resalten pines y etiquetas.
+
+- Pines e íconos:
+  - 15 tipos en 5 grupos (`optgroup` en el selector). Agregar un tipo = sumarlo a `KindGroups` y dibujarle el ícono en `PinIcon`; un tipo desconocido usa el ícono de "Punto de interés".
+  - Íconos: grilla de 24 x 24 con 3 de margen, trazo 2, puntas y uniones redondeadas, sin relleno, `currentColor`. Se dibujan a 16 px dentro de una insignia de 28 px (`--pin`). Con detalles chicos (más de dos almenas, columnas sueltas) se empastan o se confunden: revisarlos agrandados (hoja temporal a 72 px) antes de dar uno por bueno.
+  - El ícono es tinta o papel según el color de la capa (`--pin-ink`, calculado con `ContrastingInk`). Con estos dos colores, ningún fondo baja de 3,77:1 (mínimo WCAG para gráficos: 3:1). Paleta de capas verificada: el peor caso es #2980b9 con 3,78:1.
+  - Capital: estrella en lugar del ícono del tipo y un segundo anillo de tinta (`outline`). La leyenda de la vista de reinos dice "capital: X".
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
 
 ## Estado actual (2026-10-19)
@@ -91,14 +100,16 @@ Resuelto:
 
 - 2026-10-19: reinos y vistas del mapa (pedido por el autor). Probado: crear dos reinos, pintar y asignar celdas, cantidades al día tras recargar, vista de reinos con nombres y leyenda, las tres vistas de datos con su leyenda, regenerar con las mismas semillas en otro estilo conserva los reinos sin preguntar, y la carrera entre vistas resuelta. Una carga lenta (30 s) durante la prueba resultó ser el servidor compilado en caliente, no el código: con el servidor reiniciado la app abre en 1,9 s.
 
+- 2026-10-19: capitales vinculadas a pines y 15 tipos de pin con íconos SVG propios (pedido por el autor). Probado: el reino del pin se detecta por su posición, la casilla de capital funciona y sobrevive a recargar, al sacar la capital de su reino aparece el aviso, al borrar el pin el reino queda sin capital, la leyenda muestra la capital, ficha en claro y oscuro. Íconos revisados a 72 px: se rediseñaron Ruina (parecía un gráfico de barras), Cueva (parecía un arcoíris) y Torre (almenas empastadas).
+
 Pendiente:
 
-- Próximo paso posible: deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; capital de cada reino (un pin vinculado).
-- Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`).
+- Próximo paso posible: deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines.
+- Íconos sin tipo propio todavía: "Facción" y "Evento" son abstractos (estandarte y reloj de arena); revisar con el autor si le sirven.
+- Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.
 - Edición: cada cambio redibuja el SVG completo (2 a 3 s). Si molesta, dibujar solo lo que cambió o mostrar la selección mientras se redibuja.
 - Generador: mientras genera, la interfaz se congela unos segundos (C# en WebAssembly corre en el mismo hilo). Opciones: compilación AOT o generar por partes cediendo el control.
 - Generador: sombra de lluvia, nombres de lugares, símbolos de montaña. Ejercicio del autor: bioma "Pantano" en `BiomeStage.Classify`.
-- Íconos SVG propios por tipo de pin (hoy todos son un círculo).
 - Botón para elegir tema a mano (hoy sigue al sistema). Tipografías locales si se quiere usar sin conexión.
 - Imagen como data URL: pesada en memoria y en interop para mapas grandes. Pasarla a Blob mueve parte del import/export a JS; esperar a que el autor diga si su SVG real tarda en cargar.
 - El mapa no se reajusta solo al cambiar el tamaño de la ventana (hay que usar "Ajustar a pantalla").
@@ -113,7 +124,7 @@ Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su rati
 
 ## Hoja de ruta (en orden)
 
-0. Corregir los problemas de la revisión inicial. Falta: íconos de pin y decidir lo del Blob.
+0. Corregir los problemas de la revisión inicial. Falta: decidir lo del Blob (los íconos de pin se hicieron el 2026-10-19).
 1. Importador de Azgaar (CSV/GeoJSON de ciudades a pines). Falta el archivo de ejemplo en `/ejemplos`.
 2. Vincular pines con fichas de un wiki del mundo.
 3. Generador de mapas por etapas (continente, clima, ríos, biomas), cada etapa con su semilla. Primera versión hecha el 2026-10-19; quedan mejoras (ver Pendiente).

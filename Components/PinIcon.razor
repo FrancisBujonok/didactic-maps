@@ -1,0 +1,74 @@
+@* Ícono de un tipo de pin. Todos siguen las mismas reglas para verse como una familia:
+   grilla de 24 x 24 con 3 unidades de margen, trazo de 2 con puntas y uniones redondeadas,
+   sin relleno, y el color del texto que los rodea (currentColor). Los estilos están en
+   app.css (.pin-icon). *@
+<svg class="pin-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    @foreach (var d in Paths)
+    {
+        <path d="@d" />
+    }
+</svg>
+
+@code {
+    /// <summary>Tipo de pin (uno de MapPin.Kinds). Un tipo desconocido usa el de "Punto de interés".</summary>
+    [Parameter] public string Kind { get; set; } = "";
+
+    /// <summary>True si el pin es capital de un reino: se dibuja la estrella en lugar del tipo.</summary>
+    [Parameter] public bool Capital { get; set; }
+
+    private string[] Paths => Capital ? CapitalIcon : Icons.GetValueOrDefault(Kind, Icons["Punto de interés"]);
+
+    // Estrella de cinco puntas: el signo clásico de capital en los mapas.
+    private static readonly string[] CapitalIcon =
+    {
+        "M12 3l2.6 5.5 6 .8-4.4 4.1 1.1 6L12 16.5l-5.3 2.9 1.1-6-4.4-4.1 6-.8z"
+    };
+
+    // Cada ícono es una lista de trazos (el atributo "d" de un path de SVG):
+    // M x y = mover el lápiz, L / l = línea, H / V = línea horizontal / vertical,
+    // A = arco, Q = curva, Z = cerrar. Las minúsculas son relativas a la posición actual.
+    private static readonly Dictionary<string, string[]> Icons = new()
+    {
+        // Dos torres de distinta altura sobre una línea de suelo.
+        ["Ciudad"] = new[] { "M4 21V11l4-3 4 3v10", "M12 21V7l4-3 4 3v14", "M3 21h18" },
+
+        // Una casa con techo a dos aguas y puerta.
+        ["Aldea"] = new[] { "M4 21V11l8-7 8 7v10H4z", "M10 21v-5h4v5" },
+
+        // Ancla: argolla, caña, cepo y brazos.
+        ["Puerto"] = new[] { "M12 3a2 2 0 1 1 0 4a2 2 0 1 1 0-4z", "M12 7v14", "M8 11h8", "M5 14a7 7 0 0 0 14 0" },
+
+        // Muro almenado con puerta.
+        ["Fortaleza"] = new[] { "M4 21V8h3v3h3V8h4v3h3V8h3v13H4z", "M10 21v-4h4v4" },
+
+        // Torre alta y angosta con dos almenas (con más, a 16 px se empastan).
+        ["Torre"] = new[] { "M8 21V9h8v12", "M7 9V4h3v2h4V4h3v5H7z", "M6 21h12" },
+
+        // Templo clásico: frontón, columnas y escalón.
+        ["Templo"] = new[] { "M3 9l9-5 9 5H3z", "M6 9v9", "M10 9v9", "M14 9v9", "M18 9v9", "M3 21h18" },
+
+        // Ladera con la boca de la cueva, sobre una línea de suelo (sin ella parece un arcoíris).
+        ["Cueva"] = new[] { "M3 20c2-8 5-13 9-13s7 5 9 13", "M9 20c0-3 1.5-6 3-6s3 3 3 6", "M2 20h20" },
+
+        // Puerta en arco con rejas.
+        ["Mazmorra"] = new[] { "M6 21V10a6 6 0 0 1 12 0v11", "M10 21V5", "M14 21V5", "M6 15h12", "M4 21h16" },
+
+        // Pico: mango y cabeza curva.
+        ["Mina"] = new[] { "M5 19l10-10", "M8 5c5-1 9 2 11 7", "M3 21l2-2" },
+
+        // Arco roto: un pilar entero que se curva y se corta en el aire, y el muñón del otro.
+        ["Ruina"] = new[] { "M6 21V12a6 6 0 0 1 8-5.7", "M14 6.3l-1.5 2 2 1", "M18 21v-5l-1.5-1", "M3 21h18" },
+
+        // Casa con el techo cortado y una grieta en la pared.
+        ["Sitio abandonado"] = new[] { "M4 21V11l5-4.5", "M13 5.5l7 5.5v10H4", "M11 12l2 3-2 2 1 4" },
+
+        // Rombo: un punto marcado en el mapa.
+        ["Punto de interés"] = new[] { "M12 3l7 9-7 9-7-9z", "M12 10v4" },
+
+        // Estandarte en un asta.
+        ["Facción"] = new[] { "M6 21V3", "M6 4h12l-3 4 3 4H6" },
+
+        // Reloj de arena: algo que pasó (o va a pasar) en ese lugar.
+        ["Evento"] = new[] { "M7 3h10", "M7 21h10", "M8 3c0 6 8 6 8 9s-8 3-8 9", "M16 3c0 6-8 6-8 9s8 3 8 9" },
+    };
+}

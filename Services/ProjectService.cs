@@ -104,6 +104,15 @@ public class ProjectService
             region.Cells = (region.Cells ?? new()).Where(c => c >= 0 && taken.Add(c)).ToList();
         }
 
+        // Capitales: el pin tiene que existir y ser capital de un solo reino.
+        var pinIds = Project.Pins.Select(p => p.Id).ToHashSet();
+        var capitals = new HashSet<Guid>();
+        foreach (var region in Project.Regions)
+        {
+            if (region.CapitalPinId is { } id && (!pinIds.Contains(id) || !capitals.Add(id)))
+                region.CapitalPinId = null;
+        }
+
         foreach (var edit in Project.CellEdits)
         {
             if (edit.Biome is { } b && (!Enum.IsDefined(b) || !BiomeNames.Land.Contains(b)))
@@ -176,6 +185,11 @@ public class ProjectService
     public void RemovePin(Guid id)
     {
         Project.Pins.RemoveAll(p => p.Id == id);
+
+        // Si era la capital de un reino, el reino queda sin capital.
+        foreach (var region in Project.Regions.Where(r => r.CapitalPinId == id))
+            region.CapitalPinId = null;
+
         RequestSave();
     }
 
@@ -421,6 +435,35 @@ public class ProjectService
 
     /// <summary>Reino de la celda, o null si no tiene.</summary>
     public Region? RegionOf(int cell) => Project.Regions.FirstOrDefault(r => r.Cells.Contains(cell));
+
+    /// <summary>
+    /// Reino donde está parado el pin: el de la celda bajo su posición. Null si no está en un
+    /// reino o si el mapa no es generado. Puede rearmar el mundo si no está en memoria.
+    /// </summary>
+    public Region? RegionAt(MapPin pin)
+    {
+        if (GetWorld() is not { } world) return null;
+        var cell = world.Mesh.FindCell(pin.X * world.Mesh.Width, pin.Y * world.Mesh.Height);
+        return cell >= 0 ? RegionOf(cell) : null;
+    }
+
+    /// <summary>Reino del que el pin es capital, o null.</summary>
+    public Region? CapitalOf(MapPin pin) => Project.Regions.FirstOrDefault(r => r.CapitalPinId == pin.Id);
+
+    /// <summary>
+    /// Hace (o deja de hacer) al pin capital del reino. Un reino tiene una capital como máximo,
+    /// y un pin es capital de un reino como máximo: al nombrarla, se quita de cualquier otro.
+    /// </summary>
+    public void SetCapital(Region region, MapPin pin, bool isCapital)
+    {
+        foreach (var other in Project.Regions.Where(r => r.CapitalPinId == pin.Id))
+            other.CapitalPinId = null;
+
+        if (isCapital)
+            region.CapitalPinId = pin.Id;
+
+        RegionsChanged();
+    }
 
     /// <summary>
     /// Avisa que cambió algo de los reinos que se ve en el mapa (celdas o color): la vista de

@@ -149,6 +149,12 @@
 
                 @if (Store.Loaded)
                 {
+                    // Pines que son capital de algún reino: se calculan una vez por dibujo.
+                    var capitals = Store.Project.Regions
+                        .Where(r => r.CapitalPinId is not null)
+                        .Select(r => r.CapitalPinId!.Value)
+                        .ToHashSet();
+
                     for (var i = 0; i < Store.Project.Layers.Count; i++)
                     {
                         var layer = Store.Project.Layers[i];
@@ -163,18 +169,19 @@
                         foreach (var pin in Store.Project.Pins.Where(p => p.LayerId == layer.Id))
                         {
                             var isSelected = pin.Id == _selectedPinId;
+                            var isCapital = capitals.Contains(pin.Id);
 
-                            <div class="pin @(isSelected ? "selected" : "")"
+                            <div class="pin @(isSelected ? "selected" : "") @(isCapital ? "capital" : "")"
                                  @key="pin.Id"
                                  data-pin-id="@pin.Id"
                                  style="@PinStyle(pin, layer, z, isSelected)"
                                  role="button" tabindex="0"
-                                 aria-label="@pin.Kind: @pin.Title"
+                                 aria-label="@(isCapital ? "Capital" : pin.Kind): @pin.Title"
                                  aria-pressed="@(isSelected ? "true" : "false")"
                                  @onkeydown="e => OnPinKeyDown(e, pin.Id)"
                                  @onclick="() => SelectPin(pin.Id)"
                                  @onclick:stopPropagation="true">
-                                <span class="dot"></span>
+                                <span class="dot"><PinIcon Kind="@pin.Kind" Capital="isCapital" /></span>
                                 @if (_showLabels || isSelected)
                                 {
                                     <span class="label">@pin.Title</span>
@@ -201,7 +208,7 @@
                     @foreach (var region in Store.Project.Regions)
                     {
                         <span class="legend-item">
-                            <span class="swatch" style="@($"background:{SafeColor(region.Color)}")"></span>@region.Name
+                            <span class="swatch" style="@($"background:{SafeColor(region.Color)}")"></span>@region.Name@CapitalText(region)
                         </span>
                     }
                 </div>
@@ -232,12 +239,20 @@
 
             <label class="field">
                 <span>Tipo</span>
-                <select @bind="selectedPin.Kind" @bind:after="OnDataChanged">
-                    @foreach (var kind in MapPin.Kinds)
-                    {
-                        <option value="@kind">@kind</option>
-                    }
-                </select>
+                <span class="kind-row">
+                    <span class="kind-preview"><PinIcon Kind="@selectedPin.Kind" /></span>
+                    <select @bind="selectedPin.Kind" @bind:after="OnDataChanged">
+                        @foreach (var (group, kinds) in MapPin.KindGroups)
+                        {
+                            <optgroup label="@group">
+                                @foreach (var kind in kinds)
+                                {
+                                    <option value="@kind">@kind</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </span>
             </label>
 
             <label class="field">
@@ -249,6 +264,32 @@
                     }
                 </select>
             </label>
+
+            @* Reino: se calcula por la celda donde está el pin, así que cambia si se lo mueve. *@
+            @if (Store.Project.Generator is not null)
+            {
+                var region = Store.RegionAt(selectedPin);
+                var capitalOf = Store.CapitalOf(selectedPin);
+
+                <div class="field">
+                    <span>Reino</span>
+                    <p class="field-value">@(region?.Name ?? "Sin reino")</p>
+                </div>
+
+                @if (region is not null)
+                {
+                    <label class="check field">
+                        <input type="checkbox" checked="@(capitalOf == region)"
+                               @onchange="e => SetCapital(region, selectedPin, e)" />
+                        Capital de @region.Name
+                    </label>
+                }
+
+                @if (capitalOf is not null && capitalOf != region)
+                {
+                    <p class="hint">Es la capital de @capitalOf.Name, pero está fuera de su territorio.</p>
+                }
+            }
 
             <label class="field">
                 <span>Descripción</span>
@@ -501,7 +542,14 @@
     {
         _selectedPinId = id;
         _selectedCells.Clear();
+
+        // La ficha muestra el reino del pin, que necesita el mundo en memoria. Si hay que
+        // rearmarlo (tras recargar la página), mejor acá que en medio del dibujo de la ficha.
+        Store.GetWorld();
     }
+
+    private void SetCapital(Region region, MapPin pin, ChangeEventArgs e) =>
+        Store.SetCapital(region, pin, e.Value is true);
 
     /// <summary>
     /// Activa "Ver celdas". Si el mundo no está en memoria (por ejemplo, tras recargar la página)
@@ -722,6 +770,12 @@
     // ponerlo en un atributo style, igual que el color de las capas.
     private static string SafeColor(string color) => MapLayer.IsHexColor(color) ? color : Region.Palette[0];
 
+    // Texto que sigue al nombre del reino en la leyenda: ", capital: X" o nada.
+    private string CapitalText(Region region) =>
+        Store.Project.Pins.FirstOrDefault(p => p.Id == region.CapitalPinId) is { } capital
+            ? $", capital: {capital.Title}"
+            : "";
+
     private static string FormatPercent(double value) =>
         (value * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%";
 
@@ -730,8 +784,9 @@
     private static string PinStyle(MapPin pin, MapLayer layer, int z, bool isSelected)
     {
         var color = MapLayer.IsHexColor(layer.Color) ? layer.Color : MapLayer.DefaultColor;
+        // --pin-ink: color del ícono, tinta o papel según cuál contraste más con el de la capa.
         return string.Format(CultureInfo.InvariantCulture,
-            "left:{0:0.####}%;top:{1:0.####}%;z-index:{2};--pin-color:{3};",
-            pin.X * 100, pin.Y * 100, isSelected ? z + 1000 : z, color);
+            "left:{0:0.####}%;top:{1:0.####}%;z-index:{2};--pin-color:{3};--pin-ink:{4};",
+            pin.X * 100, pin.Y * 100, isSelected ? z + 1000 : z, color, MapLayer.ContrastingInk(color));
     }
 }

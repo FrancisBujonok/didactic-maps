@@ -39,7 +39,7 @@
     --radius: 4px;
     --focus: 2px;      /* grosor del anillo de foco y de los bordes dobles */
     --control: 32px;   /* alto y ancho de los controles cuadrados */
-    --pin: 20px;
+    --pin: 28px;     /* insignia del pin, con lugar para un ícono de 16 px */
     --fast: 120ms;
 }
 
@@ -300,6 +300,33 @@ input[type="range"] {
 .facts dt { color: var(--muted); font-size: var(--text-sm); }
 .facts dd { margin: 0; font-weight: 500; }
 
+/* Ficha del pin: valor de solo lectura (el reino) y selector de tipo con su ícono al lado. */
+.field-value { margin: 0; font-weight: 500; }
+
+/* ".field > .kind-row" y no solo ".kind-row": la regla ".field > span" de las etiquetas es más
+   específica y, si no, convertiría esta fila en un bloque con letra chica y tenue. */
+.field > .kind-row {
+    margin: 0;
+    color: var(--text);
+    font-size: var(--text-md);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.kind-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control);
+    height: var(--control);
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
 /* Selector y botón en la misma fila: el selector ocupa el espacio que sobra. */
 .tool-row {
     display: grid;
@@ -491,19 +518,41 @@ input[type="range"] {
     transform: translate(-50%, -50%) scale(var(--inv-scale, 1));
 }
 
-/* Borde de papel y contorno de tinta: el pin se distingue sobre cualquier color del mapa. */
+/* Insignia: borde de papel y contorno de tinta, así se distingue sobre cualquier color del
+   mapa. El ícono va en el centro, en tinta o papel según el color de la capa (--pin-ink). */
 .pin .dot {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     border-radius: 50%;
     background: var(--pin-color, var(--accent));
+    color: var(--pin-ink, var(--paper));
     border: var(--focus) solid var(--paper);
     box-shadow: 0 0 0 1px var(--ink);
     transition: box-shadow var(--fast);
 }
 
 .pin:hover .dot { box-shadow: 0 0 0 var(--focus) var(--ink); }
+
+/* Capital: un segundo anillo de tinta por fuera, como el doble círculo de los atlas. */
+.pin.capital .dot {
+    outline: var(--focus) solid var(--ink);
+    outline-offset: var(--focus);
+}
+
+/* Íconos de tipo de pin (Components/PinIcon.razor): todos con el mismo trazo. */
+.pin-icon {
+    width: var(--space-4);
+    height: var(--space-4);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex: none;
+}
 
 .pin.selected .dot,
 .pin:focus-visible .dot {

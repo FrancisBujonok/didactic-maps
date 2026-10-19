@@ -24,4 +24,10 @@ public class Region
     /// cambien la semilla del continente ni el detalle.
     /// </summary>
     public List<int> Cells { get; set; } = new();
+
+    /// <summary>
+    /// Pin que es la capital del reino, o null si no tiene. Se guarda el vínculo y no "el reino
+    /// del pin" porque el reino de un pin se calcula por la celda donde está: si se mueve, cambia.
+    /// </summary>
+    public Guid? CapitalPinId { get; set; }
 }
