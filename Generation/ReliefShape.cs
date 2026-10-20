@@ -32,9 +32,9 @@ public static class ReliefTemplates
     /// el formato que entiende el canvas del navegador.
     /// </summary>
     public static byte[] Preview(ReliefTemplate template, int seed, int columns, int rows,
-        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7)
+        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7, IReadOnlyList<SketchFeature>? features = null)
     {
-        var shape = ReliefShape.Create(template, seed, MapGenerator.Width, MapGenerator.Height, sketch, fidelity);
+        var shape = ReliefShape.Create(template, seed, MapGenerator.Width, MapGenerator.Height, sketch, fidelity, features);
         var values = new double[columns * rows];
         for (var r = 0; r < rows; r++)
         {
@@ -172,6 +172,15 @@ public sealed class ReliefShape
     private List<(double MinX, double MinY, double MaxX, double MaxY)> _boxes = new();
     private double _sketchStrength;
 
+    // Zonas de agua dibujadas ("islas negativas") y cordilleras dibujadas (líneas abiertas).
+    private List<(double X, double Y)[]> _water = new();
+    private List<(double MinX, double MinY, double MaxX, double MaxY)> _waterBoxes = new();
+    private List<(double X, double Y)[]> _ranges = new();
+
+    // Cordillera dibujada: altura y ancho de la loma (en píxeles del mapa) a lo largo de la línea.
+    private const double RangeHeight = 0.9;
+    private const double RangeWidth = 40;
+
     /// <summary>
     /// True si el nivel del mar es fijo (altura 0) en vez de elegirse por porcentaje de tierra.
     /// Pasa con el dibujo: la tierra es la que dibujó el autor, no un porcentaje pedido.
@@ -212,10 +221,30 @@ public sealed class ReliefShape
         {
             // Dibujo: fuerza × distancia con signo + ruido. La costa queda donde la suma vale 0.
             // Con fuerza alta, el ruido apenas la corre de la línea; con fuerza baja, la inventa.
-            var pull = _sketchStrength * SignedDistance(x, y) / SketchScale;
+            var pull = _sketchStrength * SignedDistance(_islands, _boxes, x, y) / SketchScale;
             pull = Math.Clamp(pull, _sketchStrength * SketchOutsideCap,
                 Math.Min(_sketchStrength * SketchInsideCap, SketchPlateau));
-            return pull + _noise.Fractal(nx, ny, 5) - EdgeDrop * EdgeTerm(x, y);
+
+            // Agua dibujada: una "isla negativa". Adentro del agua la fuerza baja como bajaría
+            // afuera de una isla; se toma el mínimo, así el agua gana sobre la tierra y su orilla
+            // queda sobre la línea. Va con el doble de fuerza: los lagos son chicos, y la misma
+            // tolerancia de la costa (unos 15 px) dejaba un cuarto de un lago dibujado como tierra.
+            if (_water.Count > 0)
+            {
+                var waterStrength = 2 * _sketchStrength;
+                var waterDistance = SignedDistance(_water, _waterBoxes, x, y);
+                pull = Math.Min(pull, Math.Max(-waterStrength * waterDistance / SketchScale, waterStrength * SketchOutsideCap));
+            }
+
+            // Cordilleras dibujadas: una loma a lo largo de cada línea.
+            var ridges = 0.0;
+            foreach (var range in _ranges)
+            {
+                var d = Sketches.DistanceToPolyline(range, x, y) / RangeWidth;
+                if (d < 3) ridges += RangeHeight * Math.Exp(-d * d); // más lejos vale casi 0
+            }
+
+            return pull + ridges + _noise.Fractal(nx, ny, 5) - EdgeDrop * EdgeTerm(x, y);
         }
 
         var value = _offset + _noiseWeight * _noise.Fractal(nx, ny, 5);
@@ -240,20 +269,21 @@ public sealed class ReliefShape
     // ------------------------------------------------------------- plantillas
 
     /// <summary>
-    /// Distancia con signo al dibujo: positiva adentro de alguna isla, negativa afuera, y su
-    /// valor absoluto es la distancia a la línea más cercana.
-    /// Adentro o afuera se decide con la prueba del rayo (la misma que usa Mesh.FindCell): se
-    /// cuentan los lados que cruza una línea horizontal desde el punto; impar es adentro.
+    /// Distancia con signo a un grupo de polígonos (las islas, o las zonas de agua): positiva
+    /// adentro de alguno, negativa afuera, y su valor absoluto es la distancia a la línea más
+    /// cercana. Adentro o afuera se decide con la prueba del rayo (la misma que usa
+    /// Mesh.FindCell): se cuentan los lados que cruza una línea horizontal desde el punto.
     /// </summary>
-    private double SignedDistance(double x, double y)
+    private static double SignedDistance(List<(double X, double Y)[]> polygons,
+        List<(double MinX, double MinY, double MaxX, double MaxY)> boxes, double x, double y)
     {
         var inside = false;
         var best = double.MaxValue;
 
-        for (var k = 0; k < _islands!.Count; k++)
+        for (var k = 0; k < polygons.Count; k++)
         {
-            var island = _islands[k];
-            var box = _boxes[k];
+            var island = polygons[k];
+            var box = boxes[k];
 
             // Si el punto queda lejos de la caja que rodea a la isla, ninguno de sus lados
             // puede estar más cerca que lo ya encontrado ni contener al punto: se saltea entera.
@@ -276,7 +306,7 @@ public sealed class ReliefShape
 
     /// <summary>Arma la forma de la plantilla. La misma semilla da siempre la misma forma.</summary>
     public static ReliefShape Create(ReliefTemplate template, int seed, double width, double height,
-        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7)
+        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7, IReadOnlyList<SketchFeature>? features = null)
     {
         var shape = new ReliefShape(width, height, seed);
         var rng = new Rng(seed + 1);
@@ -454,9 +484,15 @@ public sealed class ReliefShape
                         .ToArray())
                     .Where(island => island.Length >= 3)
                     .ToList();
-                shape._boxes = shape._islands
-                    .Select(island => (island.Min(p => p.Item1), island.Min(p => p.Item2), island.Max(p => p.Item1), island.Max(p => p.Item2)))
-                    .ToList();
+                shape._boxes = shape._islands.Select(BoundingBox).ToList();
+
+                // Agua y cordilleras dibujadas. Los biomas no cambian el relieve: los aplica SketchStage.
+                var drawn = features ?? Array.Empty<SketchFeature>();
+                shape._water = drawn.Where(f => f.Kind == SketchFeatureKind.Water)
+                    .Select(f => Sketches.ToPixels(f.Points, w, h)).Where(p => p.Length >= 3).ToList();
+                shape._waterBoxes = shape._water.Select(BoundingBox).ToList();
+                shape._ranges = drawn.Where(f => f.Kind == SketchFeatureKind.Mountains)
+                    .Select(f => Sketches.ToPixels(f.Points, w, h)).Where(p => p.Length >= 2).ToList();
 
                 // Fuerza del dibujo según la fidelidad. Con el cuadrado, el deslizador reparte
                 // mejor los efectos: 0 % no pesa (0.02), 10 % casi nada (0.04), 50 % deja una costa libre
@@ -481,6 +517,10 @@ public sealed class ReliefShape
     // --------------------------------------------------------------- ayudas
 
     private void Add(Feature feature) => _features.Add(feature);
+
+    // Caja que rodea a un polígono: permite saltear rápido los que quedan lejos de un punto.
+    private static (double MinX, double MinY, double MaxX, double MaxY) BoundingBox((double X, double Y)[] polygon) =>
+        (polygon.Min(p => p.X), polygon.Min(p => p.Y), polygon.Max(p => p.X), polygon.Max(p => p.Y));
 
     private void Noise(double frequency, double weight)
     {

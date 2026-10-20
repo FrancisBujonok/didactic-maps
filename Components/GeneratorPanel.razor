@@ -43,12 +43,7 @@
         @* Dibujo: la tierra sale de las islas dibujadas, no de un porcentaje. *@
         <div class="sketch-tools">
             <p class="hint">
-                @(Store.Project.SketchDraft.Count switch
-                {
-                    0 => "Todavía no dibujaste ninguna isla.",
-                    1 => "1 isla dibujada.",
-                    var n => $"{n} islas dibujadas."
-                })
+                @SketchSummary
             </p>
             <div class="btn-row">
                 <button class="btn" disabled="@_busy" @onclick="OnStartSketch">Dibujar en el mapa</button>
@@ -191,6 +186,29 @@
     private string? _sketchPreview;
     private IJSObjectReference? _preview;
 
+    /// <summary>Resumen del dibujo en curso: "2 islas, 1 lago o bahía, 1 cordillera y 2 zonas de bioma".</summary>
+    private string SketchSummary
+    {
+        get
+        {
+            var islands = Store.Project.SketchDraft.Count;
+            if (islands == 0) return "Todavía no dibujaste ninguna isla.";
+
+            string Count(int n, string one, string many) => n == 1 ? $"1 {one}" : $"{n} {many}";
+            var features = Store.Project.SketchFeatureDraft;
+            var parts = new List<string> { Count(islands, "isla", "islas") };
+            var water = features.Count(f => f.Kind == SketchFeatureKind.Water);
+            var ranges = features.Count(f => f.Kind == SketchFeatureKind.Mountains);
+            var zones = features.Count(f => f.Kind == SketchFeatureKind.Biome);
+            if (water > 0) parts.Add(Count(water, "lago o bahía", "lagos o bahías"));
+            if (ranges > 0) parts.Add(Count(ranges, "cordillera", "cordilleras"));
+            if (zones > 0) parts.Add(Count(zones, "zona de bioma", "zonas de bioma"));
+
+            var text = parts.Count == 1 ? parts[0] : string.Join(", ", parts.Take(parts.Count - 1)) + " y " + parts[^1];
+            return $"Dibujado: {text}.";
+        }
+    }
+
     private int FidelityPercent
     {
         get => (int)Math.Round(_settings.SketchFidelity * 100);
@@ -212,7 +230,7 @@
 
         _preview ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/preview.js");
         var pixels = ReliefTemplates.Preview(ReliefTemplate.Sketch, _settings.ContinentSeed, 96, 60,
-            Store.Project.SketchDraft, _settings.SketchFidelity);
+            Store.Project.SketchDraft, _settings.SketchFidelity, Store.Project.SketchFeatureDraft);
         _sketchPreview = await _preview.InvokeAsync<string>("toDataUrl", 96, 60, pixels);
     }
 
@@ -342,6 +360,7 @@
                 return;
             }
             settings.Sketch = Sketches.Copy(Store.Project.SketchDraft);
+            settings.SketchFeatures = Sketches.CopyFeatures(Store.Project.SketchFeatureDraft);
         }
 
         // Si la imagen actual vino de un archivo, se pregunta antes de reemplazarla.

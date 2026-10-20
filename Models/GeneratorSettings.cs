@@ -53,6 +53,9 @@ public class GeneratorSettings
     /// <summary>Cuánto respeta la costa el dibujo: 0 casi nada (inventa), 1 sigue la línea.</summary>
     public double SketchFidelity { get; set; } = 0.7;
 
+    /// <summary>Zonas dibujadas que no son tierra (agua, cordilleras, biomas), usadas en el mapa actual.</summary>
+    public List<SketchFeature> SketchFeatures { get; set; } = new();
+
     /// <summary>Latitud del mapa y manchas de humedad.</summary>
     public int ClimateSeed { get; set; }
 
@@ -115,6 +118,7 @@ public class GeneratorSettings
         // las dos copias: se copia aparte, isla por isla.
         var copy = (GeneratorSettings)MemberwiseClone();
         copy.Sketch = Sketch.Select(island => (double[])island.Clone()).ToList();
+        copy.SketchFeatures = Sketches.CopyFeatures(SketchFeatures);
         return copy;
     }
 
@@ -129,6 +133,7 @@ public class GeneratorSettings
         if (SettlementSeed == 0) SettlementSeed = 1; // proyectos guardados antes de esta etapa
         SketchFidelity = Math.Clamp(SketchFidelity, 0, 1);
         Sketch = Sketches.Clean(Sketch);
+        SketchFeatures = Sketches.CleanFeatures(SketchFeatures);
         if (!Enum.IsDefined(Template))
             Template = ReliefTemplate.Continent;
         if (!Enum.IsDefined(Style))

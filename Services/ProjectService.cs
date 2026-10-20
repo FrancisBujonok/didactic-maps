@@ -93,6 +93,10 @@ public class ProjectService
         if (Project.SketchDraft.Count == 0 && Project.Generator is { } settings)
             Project.SketchDraft = Sketches.Copy(settings.Sketch);
 
+        Project.SketchFeatureDraft = Sketches.CleanFeatures(Project.SketchFeatureDraft);
+        if (Project.SketchFeatureDraft.Count == 0 && Project.Generator is { } generated)
+            Project.SketchFeatureDraft = Sketches.CopyFeatures(generated.SketchFeatures);
+
         // Ediciones a mano: sin celdas inválidas, sin vacías y una sola por celda (la última).
         Project.CellEdits = (Project.CellEdits ?? new())
             .Where(e => e is not null && e.Cell >= 0 && !e.IsEmpty)
@@ -516,41 +520,81 @@ public class ProjectService
     /// <summary>Se dispara cuando cambia el dibujo en curso (para el editor y el panel).</summary>
     public event Action? SketchChanged;
 
-    // Tolerancia de la simplificación y área mínima de una isla, en píxeles del mapa.
+    // Tolerancia de la simplificación, área mínima de una zona cerrada y largo mínimo de una
+    // cordillera, en píxeles del mapa. Por debajo es un garabato, no un trazo con intención.
     private const double SketchTolerance = 3;
-    private const double MinIslandArea = 400; // unos 20 x 20 px: menos es un garabato, no una isla
+    private const double MinIslandArea = 400;  // unos 20 x 20 px
+    private const double MinRangeLength = 40;
+
+    // Orden de los trazos de esta sesión, para que "Deshacer" quite el último sin importar su
+    // tipo: true = zona (agua, cordillera, bioma), false = isla. No se guarda: al recargar,
+    // "Deshacer" quita primero las zonas y después las islas.
+    private readonly Stack<bool> _sketchHistory = new();
+
+    /// <summary>Cantidad total de trazos del dibujo en curso (islas y zonas).</summary>
+    public int SketchStrokeCount => Project.SketchDraft.Count + Project.SketchFeatureDraft.Count;
 
     /// <summary>
-    /// Agrega un trazo al dibujo en curso. Llega como lista plana de coordenadas normalizadas;
-    /// se simplifica (Ramer-Douglas-Peucker) y se descarta si es casi una línea. Devuelve
-    /// false si se descartó.
+    /// Agrega un trazo al dibujo en curso con la herramienta elegida. Llega como lista plana de
+    /// coordenadas normalizadas; se simplifica (Ramer-Douglas-Peucker) y se descarta si es un
+    /// garabato. Las cordilleras son líneas abiertas; lo demás, zonas cerradas. Devuelve false si
+    /// se descartó.
     /// </summary>
-    public bool AddSketchStroke(double[] normalized)
+    public bool AddSketchStroke(double[] normalized, SketchTool tool, Biome biome)
     {
         var w = MapGenerator.Width;
         var h = MapGenerator.Height;
-        var points = Enumerable.Range(0, normalized.Length / 2)
-            .Select(i => (X: normalized[i * 2] * w, Y: normalized[i * 2 + 1] * h))
-            .ToList();
+        var simple = Sketches.Simplify(Sketches.ToPixels(normalized, w, h), SketchTolerance);
 
-        var simple = Sketches.Simplify(points, SketchTolerance);
-        if (simple.Count < 3 || Sketches.Area(simple) < MinIslandArea) return false;
+        var valid = tool == SketchTool.Mountains
+            ? simple.Count >= 2 && Sketches.Length(simple) >= MinRangeLength
+            : simple.Count >= 3 && Sketches.Area(simple) >= MinIslandArea;
+        if (!valid) return false;
 
-        Project.SketchDraft.Add(simple.SelectMany(p => new[] { p.X / w, p.Y / h }).ToArray());
+        var points = simple.SelectMany(p => new[] { p.X / w, p.Y / h }).ToArray();
+        if (tool == SketchTool.Land)
+        {
+            Project.SketchDraft.Add(points);
+        }
+        else
+        {
+            Project.SketchFeatureDraft.Add(new SketchFeature
+            {
+                Kind = tool switch
+                {
+                    SketchTool.Water => SketchFeatureKind.Water,
+                    SketchTool.Mountains => SketchFeatureKind.Mountains,
+                    _ => SketchFeatureKind.Biome
+                },
+                Biome = tool == SketchTool.Biome ? biome : null,
+                Points = points
+            });
+        }
+
+        _sketchHistory.Push(tool != SketchTool.Land);
         SketchEdited();
         return true;
     }
 
     public void UndoSketchStroke()
     {
-        if (Project.SketchDraft.Count == 0) return;
-        Project.SketchDraft.RemoveAt(Project.SketchDraft.Count - 1);
+        if (SketchStrokeCount == 0) return;
+
+        // Sin historial (tras recargar), primero las zonas y después las islas.
+        var feature = _sketchHistory.Count > 0 ? _sketchHistory.Pop() : Project.SketchFeatureDraft.Count > 0;
+        if (feature && Project.SketchFeatureDraft.Count > 0)
+            Project.SketchFeatureDraft.RemoveAt(Project.SketchFeatureDraft.Count - 1);
+        else if (Project.SketchDraft.Count > 0)
+            Project.SketchDraft.RemoveAt(Project.SketchDraft.Count - 1);
+
         SketchEdited();
     }
 
     public void ClearSketch()
     {
         Project.SketchDraft.Clear();
+        Project.SketchFeatureDraft.Clear();
+        _sketchHistory.Clear();
         SketchEdited();
     }
 

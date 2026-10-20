@@ -100,7 +100,8 @@ export function init(viewport, world, dotnet) {
     for (let i = 0; i < points.length; i += 2) {
       d += `${i === 0 ? 'M' : 'L'}${(points[i] * w).toFixed(1)} ${(points[i + 1] * h).toFixed(1)}`;
     }
-    path.setAttribute('d', d + 'Z');
+    // Las cordilleras (clase sketch-open en el visor) son líneas abiertas; lo demás se cierra.
+    path.setAttribute('d', viewport.classList.contains('sketch-open') ? d : d + 'Z');
   };
 
   // Si pedimos ajustar mientras la imagen todavía carga, se ajusta cuando termine de cargar.

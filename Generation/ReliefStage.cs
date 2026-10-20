@@ -16,7 +16,7 @@ public static class ReliefStage
     {
         var mesh = world.Mesh;
         var shape = ReliefShape.Create(settings.Template, settings.ContinentSeed, mesh.Width, mesh.Height,
-            settings.Sketch, settings.SketchFidelity);
+            settings.Sketch, settings.SketchFidelity, settings.SketchFeatures);
 
         var raw = new double[mesh.Count];
         for (var i = 0; i < mesh.Count; i++)

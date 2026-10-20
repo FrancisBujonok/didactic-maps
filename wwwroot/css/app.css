@@ -19,6 +19,9 @@
     /* Etiquetas y pines van sobre el mapa, no sobre la interfaz: no cambian con el tema. */
     --ink: #23201A;
     --paper: #F4EFE3;
+    --map-water: #9DBDCB;  /* mar del mapa generado (SvgMapRenderer.DeepSea) */
+    --map-river: #4E7C9B;  /* ríos y orillas */
+    --map-sepia: #6B4E3D;  /* capa "Poblados" y cordilleras dibujadas */
 
     /* Espaciado: múltiplos de 4 px */
     --space-1: 4px;
@@ -645,6 +648,34 @@ input[type="range"] {
     stroke-width: calc(var(--focus) * var(--inv-scale, 1));
     stroke-linejoin: round;
 }
+
+/* Agua dibujada: el celeste del mapa con orilla azul. */
+.sketch-live .water {
+    fill: var(--map-water);
+    fill-opacity: .6;
+    stroke: var(--map-river);
+    stroke-width: calc(var(--focus) * var(--inv-scale, 1));
+    stroke-linejoin: round;
+}
+
+/* Cordillera dibujada: línea gruesa en el sepia de las insignias de poblados. */
+.sketch-live .range {
+    fill: none;
+    stroke: var(--map-sepia);
+    stroke-width: calc(var(--space-2) * var(--inv-scale, 1));
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Zona de bioma: el color del bioma (lo pone el editor) a media opacidad, borde discontinuo. */
+.sketch-live .zone {
+    fill-opacity: .55;
+    stroke: var(--ink);
+    stroke-width: calc(var(--focus) * var(--inv-scale, 1) / 2);
+    stroke-dasharray: calc(var(--space-2) * var(--inv-scale, 1)) calc(var(--space-1) * var(--inv-scale, 1));
+}
+
+.placebar .sketch-biome { width: auto; padding: var(--space-1) var(--space-2); }
 
 /* Trazo en curso: línea discontinua del acento, para distinguirlo de lo ya dibujado. */
 .sketch-live .live {

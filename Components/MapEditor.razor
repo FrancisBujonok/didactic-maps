@@ -117,13 +117,33 @@
         {
             <div class="placebar">
                 <span class="placebar-label">
-                    <strong>Dibujar costa:</strong> arrastrá para trazar una isla.
+                    <strong>Dibujar:</strong> @SketchToolHint
                     Botón del medio: mover el mapa. Rueda: zoom.
                 </span>
+
+                @* Herramienta: qué se dibuja con el próximo trazo. *@
+                <div class="seg" role="group" aria-label="Qué dibujar">
+                    @foreach (var (tool, name) in SketchTools)
+                    {
+                        <button class="btn small @(_sketchTool == tool ? "on" : "")"
+                                aria-pressed="@(_sketchTool == tool ? "true" : "false")"
+                                @onclick="() => _sketchTool = tool">@name</button>
+                    }
+                </div>
+                @if (_sketchTool == SketchTool.Biome)
+                {
+                    <select class="sketch-biome" @bind="_sketchBiome" aria-label="Bioma de la zona">
+                        @foreach (var biome in BiomeNames.Land)
+                        {
+                            <option value="@biome">@BiomeNames.Of(biome)</option>
+                        }
+                    </select>
+                }
+
                 <div class="btn-row">
-                    <button class="btn small" disabled="@(Store.Project.SketchDraft.Count == 0)"
+                    <button class="btn small" disabled="@(Store.SketchStrokeCount == 0)"
                             @onclick="Store.UndoSketchStroke">Deshacer trazo</button>
-                    <button class="btn small" disabled="@(Store.Project.SketchDraft.Count == 0)"
+                    <button class="btn small" disabled="@(Store.SketchStrokeCount == 0)"
                             @onclick="ClearSketchAsync">Borrar todo</button>
                     <button class="btn small" @onclick="() => _mode = Mode.Navigate">Terminar</button>
                 </div>
@@ -162,6 +182,23 @@
                         @foreach (var island in Store.Project.SketchDraft)
                         {
                             <path class="island" d="@IslandPath(island)" />
+                        }
+                        @foreach (var feature in Store.Project.SketchFeatureDraft)
+                        {
+                            @switch (feature.Kind)
+                            {
+                                case SketchFeatureKind.Water:
+                                    <path class="water" d="@IslandPath(feature.Points)" />
+                                    break;
+                                case SketchFeatureKind.Mountains:
+                                    <path class="range" d="@IslandPath(feature.Points, closed: false)" />
+                                    break;
+                                default:
+                                    @* Color del bioma (fijo, del dibujo del mapa): se ve qué zona es cuál. *@
+                                    <path class="zone" d="@IslandPath(feature.Points)"
+                                          style="@($"fill:{SvgMapRenderer.BiomeColor(feature.Biome ?? Biome.Grassland)}")" />
+                                    break;
+                            }
                         }
                         <path class="live" />
                     </svg>
@@ -395,6 +432,8 @@
 
     private Mode _mode = Mode.Navigate;
     private string _newPinKind = MapPin.Kinds[0]; // tipo de los pines que se colocan
+    private SketchTool _sketchTool = SketchTool.Land;   // qué se dibuja con el próximo trazo
+    private Biome _sketchBiome = Biome.TemperateForest; // bioma de las zonas dibujadas
     private bool _choosingKind;                   // la ficha muestra la grilla de tipos
     private MapView _view = MapView.Terrain;          // vista que se muestra
     private MapView _requestedView = MapView.Terrain; // última vista elegida (puede estar preparándose)
@@ -574,7 +613,7 @@
 
     private async Task ClearSketchAsync()
     {
-        if (await JS.InvokeAsync<bool>("confirm", $"¿Borrar las {Store.Project.SketchDraft.Count} islas dibujadas?"))
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Borrar los {Store.SketchStrokeCount} trazos del dibujo?"))
             Store.ClearSketch();
     }
 
@@ -583,12 +622,12 @@
     public Task OnSketchStroke(double[] points) => InvokeAsync(() =>
     {
         if (_mode != Mode.Sketch) return;
-        _message = Store.AddSketchStroke(points) ? "" : "Ese trazo es muy chico para ser una isla: no se agregó.";
+        _message = Store.AddSketchStroke(points, _sketchTool, _sketchBiome) ? "" : "Ese trazo es muy chico: no se agregó.";
         StateHasChanged();
     });
 
     // Isla del dibujo como path de SVG, en las coordenadas del viewBox (el tamaño del mapa).
-    private static string IslandPath(double[] island)
+    private static string IslandPath(double[] island, bool closed = true)
     {
         var d = new System.Text.StringBuilder();
         for (var i = 0; i < island.Length; i += 2)
@@ -597,8 +636,22 @@
              .Append(F(island[i] * MapGenerator.Width)).Append(' ')
              .Append(F(island[i + 1] * MapGenerator.Height));
         }
-        return d.Append('Z').ToString();
+        return closed ? d.Append('Z').ToString() : d.ToString(); // las cordilleras quedan abiertas
     }
+
+    private static readonly (SketchTool Tool, string Name)[] SketchTools =
+    {
+        (SketchTool.Land, "Tierra"), (SketchTool.Water, "Agua"), (SketchTool.Mountains, "Montañas"), (SketchTool.Biome, "Bioma")
+    };
+
+    // Qué hace el próximo trazo, en la barra de dibujo.
+    private string SketchToolHint => _sketchTool switch
+    {
+        SketchTool.Water => "arrastrá un contorno para un lago o una bahía.",
+        SketchTool.Mountains => "arrastrá una línea para una cordillera.",
+        SketchTool.Biome => $"arrastrá un contorno: esa zona será {BiomeNames.Of(_sketchBiome).ToLowerInvariant()}.",
+        _ => "arrastrá un contorno para una isla."
+    };
 
     // El panel de celdas cambió el mapa: no hay nada que hacer acá, pero recibir el aviso hace
     // que el editor se vuelva a dibujar con la imagen nueva.
@@ -877,7 +930,8 @@
     {
         Mode.AddPin => "adding",
         Mode.Inspect => "inspecting",
-        Mode.Sketch => "sketching",
+        // Con la herramienta Montañas el trazo es una línea abierta: mapview.js no lo cierra.
+        Mode.Sketch => _sketchTool == SketchTool.Mountains ? "sketching sketch-open" : "sketching",
         _ => ""
     };
 

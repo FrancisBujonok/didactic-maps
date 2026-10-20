@@ -31,6 +31,9 @@ public static class SvgMapRenderer
     // Veces que se suaviza cada línea. Cada pasada duplica los puntos; con 2 ya no se ven esquinas.
     internal const int SmoothPasses = 2;
 
+    /// <summary>Color de un bioma en el mapa (lo usa también el editor para las zonas dibujadas).</summary>
+    public static string BiomeColor(Biome biome) => BiomeColors.GetValueOrDefault(biome, "#CFCB93");
+
     private static readonly Dictionary<Biome, string> BiomeColors = new()
     {
         [Biome.Ice] = "#F2F1EC",

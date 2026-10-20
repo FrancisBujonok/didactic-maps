@@ -26,8 +26,11 @@ public static class MapGenerator
             ReliefStage.FindWater(world); // la costa cambió: se recalculan mar, lagos y distancias
 
         ClimateStage.Apply(world, settings.ClimateSeed);
+        var drawn = settings.Template == ReliefTemplate.Sketch ? settings.SketchFeatures : new List<SketchFeature>();
+        SketchStage.ApplyClimate(world, drawn);   // biomas dibujados: su clima, antes de los ríos
         RiverStage.Apply(world, settings.RiverSeed);
         BiomeStage.Apply(world, settings.BiomeSeed);
+        SketchStage.ApplyBiomes(world, drawn);    // y su bioma, antes de las ediciones a mano
         EditStage.ApplyBiomes(world, edits);
 
         return world;
@@ -67,6 +70,6 @@ public static class MapGenerator
     /// </summary>
     public static bool ChangesCoast(GeneratorSettings before, GeneratorSettings after) =>
         ChangesMesh(before, after) || before.Template != after.Template || before.LandRatio != after.LandRatio ||
-        (after.Template == ReliefTemplate.Sketch &&
-         (before.SketchFidelity != after.SketchFidelity || !Sketches.SameAs(before.Sketch, after.Sketch)));
+        (after.Template == ReliefTemplate.Sketch && (!Sketches.SameFeatures(before.SketchFeatures, after.SketchFeatures) ||
+         before.SketchFidelity != after.SketchFidelity || !Sketches.SameAs(before.Sketch, after.Sketch)));
 }

@@ -27,6 +27,9 @@ public class MapProject
     /// para no perderlo al recargar; al generar se copia en GeneratorSettings.Sketch.
     /// </summary>
     public List<double[]> SketchDraft { get; set; } = new();
+
+    /// <summary>Zonas del dibujo en curso que no son tierra (agua, cordilleras, biomas).</summary>
+    public List<SketchFeature> SketchFeatureDraft { get; set; } = new();
 }
 
 /// <summary>
