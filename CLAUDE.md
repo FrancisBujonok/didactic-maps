@@ -6,6 +6,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 
 - `dotnet build`: compilar (verificar después de cada cambio).
 - `dotnet run`: ejecutar en http://localhost:5000 (no hay launchSettings.json, es el puerto por defecto).
+- `dotnet test Tests/MapaMundos.Tests`: correr las pruebas (unos 2 s). No hay archivo de solución a propósito: con un `.sln` o `.slnx` en la raíz, `dotnet build` y `dotnet run` sin argumentos fallan por haber dos archivos de proyecto o solución.
 - SDK instalado: 10.0.400. Destino: net10.0, paquetes 10.0.*.
 - Vista previa de Claude: configuración `pruebas` en `.claude/launch.json`, puerto 5080. Es otro origen, así que su IndexedDB no pisa los datos reales del puerto 5000. Si el panel está oculto no dibuja cuadros: no sirven capturas ni ResizeObserver, hay que probar con scripts o pedirle al autor que mire.
 - Detener el servidor antes de `dotnet build`. Si se compila con el servidor corriendo, la app puede quedar en "Cargando..." con errores de `integrity` en la consola: se arregla con `dotnet clean`, `dotnet build` y recarga forzada (Ctrl+F5).
@@ -45,6 +46,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
 - `wwwroot/js/files.js`: selector de archivos y descarga.
 - `wwwroot/css/app.css`: estilos.
+- `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`.
 
 ## Decisiones
 
@@ -114,7 +116,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Extras: fortalezas en fronteras, cuevas en montañas que tocan tierra baja, ruinas y bosques sagrados en las celdas más alejadas de los poblados. Separación propia más chica respecto de los poblados (`takenGap`); sin eso no cabían.
   - Valores de la prueba (densidad normal): unos 70 lugares, 9 a 13 ciudades, 14 o 15 puertos, 5 o 6 fortalezas, 4 reinos de 12 % a 37 % de la tierra; 10 a 45 ms en PC, 1 s en el navegador.
   - Los pines generados van a la capa "Poblados" (sepia #6B4E3D) con `Generated = true`. Editarlos en la ficha, moverlos o hacerlos capital los "adopta" (`Generated = false`). Volver a poblar borra solo los generados; generar un mapa con otra malla también.
-  - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado).
+  - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado). `GeneratorTests.KnownMaps_DoNotChange` lo detecta con huellas (SHA-256 de altura redondeada a 9 decimales, bioma y río de cada celda) de tres mapas. Si el cambio es a propósito, se actualiza la huella y se anota acá.
 
 ## Estado actual (2026-10-20)
 
@@ -154,12 +156,15 @@ Resuelto:
 
 - 2026-10-20: retoques sobre cualquier plantilla y goma (pedido por el autor: "generé un mapa al azar y quiero agregarle una isla", "y también borrar"). Probado en la app: continente generado, isla agregada en el mar y agua sobre un bosque (sale lago), los puntos lejanos no cambian, la goma borra una cordillera y una isla, "Deshacer" las devuelve, los retoques sobreviven a recargar y Dibujo sigue generando con los mismos trazos. Prueba fuera de la app: ver "Retoques, valores de la prueba".
 
+- 2026-10-20: proyecto de pruebas xUnit (pedido por el autor, primero en la lista de próximos pasos). 41 pruebas, todas pasan en unos 2 s. Comprobado que fallan cuando deben: con `AltitudeCooling` en 0,41 fallan las 3 huellas, y con el alcance de los retoques en 1000 px falla la prueba de celdas lejanas.
+
 Pendiente:
 
 - Próximo paso posible: importar mapa de alturas (opción C).
 - Lagos dibujados muy hondos (casi 1900 m en la prueba): el agua tiene el doble de fuerza y llega al fondo de la escala. Si molesta, limitar su profundidad.
 - Próximo paso posible: rutas entre ciudades (caminos por el terreno más barato, como los reinos); deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo.
 - Con muchos lugares, los nombres medianos todavía se pisan en ventanas chicas. Mejora posible: correr las etiquetas que chocan o generalizar también los medianos a más distancia.
+- Ejercicio del autor (pruebas, nuevo): en `SketchesTests`, una prueba para `Sketches.Length` (una "L" de 3 + 4 mide 7) y otra para `DistanceToPolyline`; en un archivo nuevo `MeshTests.cs`, que `FindCell` con el centro de una celda devuelva esa celda (`[Theory]` con varias celdas, malla de `new Mesh(2000, 1250, 18, 42)`).
 - Ejercicio del autor (nuevo): que la goma diga qué borró ("Se borró una cordillera."). `EraseSketchAt` devuelve `bool`; cambiarlo para que devuelva el nombre de lo borrado (o null si no tocó nada) y usarlo en `OnSketchErase` de `MapEditor`.
 - Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.
 - Edición: cada cambio redibuja el SVG completo (2 a 3 s). Si molesta, dibujar solo lo que cambió o mostrar la selección mientras se redibuja.
@@ -188,6 +193,7 @@ Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su rati
 
 - Antes de cambiar código, explicar el concepto y el plan en pocas líneas.
 - Cambios chicos, uno por vez, verificando con `dotnet build`.
+- Después de tocar el generador o los modelos, correr también `dotnet test Tests/MapaMundos.Tests`. Si una prueba falla, entender por qué antes de cambiar la prueba.
 - Interfaz y comentarios en español, sin emojis y sin guiones largos.
 - Siempre que se pueda, dejar una parte para que la haga el autor con una consigna, y después corregirla.
 - Al terminar cada paso, actualizar este archivo y recordarle al autor que lo incluya en el commit.

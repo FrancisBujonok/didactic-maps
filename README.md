@@ -23,6 +23,16 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 11. Cada pin tiene un tipo con su ícono y un tamaño (chico, mediano, grande) que marca su importancia; la forma depende del grupo: insignia redonda para asentamientos, cuadrada para defensas y sin insignia para lugares menores. Tipos: ciudad, aldea, puerto, posada, fortaleza, torre, templo, bosque sagrado, cueva, mazmorra, mina, ruina, sitio abandonado, campo de batalla y otros. Con "Colocar pines" activo, la barra de íconos de arriba del mapa elige el tipo de los pines nuevos; en la ficha, "Cambiar" abre la grilla de tipos. Si un pin está dentro de un reino, su ficha permite marcarlo como capital: se dibuja con una estrella y un anillo doble.
 12. En "Generar mapa", sección "Poblados", "Poblar mapa" funda ciudades, puertos, aldeas, fortalezas en las fronteras, cuevas, ruinas y bosques sagrados donde tiene sentido (ríos, costas, tierra fértil), con nombres inventados y su propia semilla. Puede crear reinos nuevos alrededor de las capitales o usar los que ya tenés. Los lugares que edites o muevas se conservan al volver a poblar.
 
+## Pruebas automáticas
+
+Las pruebas están en `Tests/MapaMundos.Tests` (xUnit) y se corren con:
+
+```
+dotnet test Tests/MapaMundos.Tests
+```
+
+Cubren el generador (misma semilla, mismo mundo; porcentaje de tierra en las 10 plantillas; borde siempre mar), las ayudas de geometría de los dibujos, los retoques (una isla agregada es tierra y no cambia nada lejos) y la limpieza de parámetros guardados. Las "huellas" de `GeneratorTests` resumen tres mapas conocidos: si fallan después de un cambio, ese cambio altera los mapas que ya generaste con las mismas semillas.
+
 ## Cómo está organizado
 
 - `Models/`: los datos (`MapProject`, `MapLayer`, `MapPin`) y el formato del archivo exportado.

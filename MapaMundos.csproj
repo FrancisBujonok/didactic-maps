@@ -12,4 +12,11 @@
    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.*" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Las pruebas son un proyecto aparte (Tests/MapaMundos.Tests): la app no compila sus archivos. -->
+  <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <Content Remove="Tests\**" />
+    <None Remove="Tests\**" />
+  </ItemGroup>
+
 </Project>
