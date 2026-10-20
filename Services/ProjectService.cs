@@ -88,6 +88,11 @@ public class ProjectService
 
         Project.Generator?.Normalize();
 
+        // Dibujo en curso: limpio, y si no había (proyectos de antes), el del último mapa generado.
+        Project.SketchDraft = Sketches.Clean(Project.SketchDraft);
+        if (Project.SketchDraft.Count == 0 && Project.Generator is { } settings)
+            Project.SketchDraft = Sketches.Copy(settings.Sketch);
+
         // Ediciones a mano: sin celdas inválidas, sin vacías y una sola por celda (la última).
         Project.CellEdits = (Project.CellEdits ?? new())
             .Where(e => e is not null && e.Cell >= 0 && !e.IsEmpty)
@@ -337,7 +342,8 @@ public class ProjectService
     /// <summary>Cuántos pines generados hay todavía sin tocar.</summary>
     public int GeneratedPinCount => Project.Pins.Count(p => p.Generated);
 
-    private void RemoveGeneratedPins()
+    /// <summary>Borra los lugares generados que el autor no tocó (y las capitales que eran de ellos).</summary>
+    public void RemoveGeneratedPins()
     {
         var removed = Project.Pins.Where(p => p.Generated).Select(p => p.Id).ToHashSet();
         Project.Pins.RemoveAll(p => removed.Contains(p.Id));
@@ -503,6 +509,55 @@ public class ProjectService
     {
         _viewCache.Remove(MapView.Regions);
         RequestSave();
+    }
+
+    // ------------------------------------------------------------------- dibujo
+
+    /// <summary>Se dispara cuando cambia el dibujo en curso (para el editor y el panel).</summary>
+    public event Action? SketchChanged;
+
+    // Tolerancia de la simplificación y área mínima de una isla, en píxeles del mapa.
+    private const double SketchTolerance = 3;
+    private const double MinIslandArea = 400; // unos 20 x 20 px: menos es un garabato, no una isla
+
+    /// <summary>
+    /// Agrega un trazo al dibujo en curso. Llega como lista plana de coordenadas normalizadas;
+    /// se simplifica (Ramer-Douglas-Peucker) y se descarta si es casi una línea. Devuelve
+    /// false si se descartó.
+    /// </summary>
+    public bool AddSketchStroke(double[] normalized)
+    {
+        var w = MapGenerator.Width;
+        var h = MapGenerator.Height;
+        var points = Enumerable.Range(0, normalized.Length / 2)
+            .Select(i => (X: normalized[i * 2] * w, Y: normalized[i * 2 + 1] * h))
+            .ToList();
+
+        var simple = Sketches.Simplify(points, SketchTolerance);
+        if (simple.Count < 3 || Sketches.Area(simple) < MinIslandArea) return false;
+
+        Project.SketchDraft.Add(simple.SelectMany(p => new[] { p.X / w, p.Y / h }).ToArray());
+        SketchEdited();
+        return true;
+    }
+
+    public void UndoSketchStroke()
+    {
+        if (Project.SketchDraft.Count == 0) return;
+        Project.SketchDraft.RemoveAt(Project.SketchDraft.Count - 1);
+        SketchEdited();
+    }
+
+    public void ClearSketch()
+    {
+        Project.SketchDraft.Clear();
+        SketchEdited();
+    }
+
+    private void SketchEdited()
+    {
+        RequestSave();
+        SketchChanged?.Invoke();
     }
 
     // ----------------------------------------------------------------- poblados

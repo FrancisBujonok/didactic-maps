@@ -21,7 +21,7 @@ public static class MapGenerator
         var mesh = new Mesh(Width, Height, settings.CellSize, settings.ContinentSeed + 7);
         var world = new World(mesh);
 
-        ReliefStage.Apply(world, settings.ContinentSeed, settings.LandRatio);
+        ReliefStage.Apply(world, settings);
         if (EditStage.ApplyElevation(world, edits))
             ReliefStage.FindWater(world); // la costa cambió: se recalculan mar, lagos y distancias
 
@@ -59,4 +59,14 @@ public static class MapGenerator
     /// </summary>
     public static bool ChangesMesh(GeneratorSettings before, GeneratorSettings after) =>
         before.ContinentSeed != after.ContinentSeed || before.CellSize != after.CellSize;
+
+    /// <summary>
+    /// True si cambia dónde está la tierra aunque las celdas sean las mismas (otra plantilla u
+    /// otro porcentaje de tierra). Las ediciones siguen valiendo, pero los lugares generados
+    /// pueden quedar en el mar.
+    /// </summary>
+    public static bool ChangesCoast(GeneratorSettings before, GeneratorSettings after) =>
+        ChangesMesh(before, after) || before.Template != after.Template || before.LandRatio != after.LandRatio ||
+        (after.Template == ReliefTemplate.Sketch &&
+         (before.SketchFidelity != after.SketchFidelity || !Sketches.SameAs(before.Sketch, after.Sketch)));
 }

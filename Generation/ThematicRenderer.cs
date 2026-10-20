@@ -62,6 +62,13 @@ public static class ThematicRenderer
         _ => null
     };
 
+    /// <summary>
+    /// Color de una altura (-1 fondo del mar, 0 costa, 1 cumbre) con la escala de la vista
+    /// "Altura". Lo usan también las miniaturas de las plantillas, así coinciden.
+    /// </summary>
+    internal static string ElevationColor(double elevation) =>
+        elevation > 0 ? Scale(LandStops, elevation) : Scale(SeaStops, 1 + elevation);
+
     // ---------------------------------------------------------- vistas de datos
 
     /// <summary>Dibuja una vista de datos completa (tapa el terreno).</summary>
@@ -70,9 +77,7 @@ public static class ThematicRenderer
         var mesh = world.Mesh;
         Func<int, string> colorOf = view switch
         {
-            MapView.Elevation => i => world.Elevation[i] > 0
-                ? Scale(LandStops, world.Elevation[i])
-                : Scale(SeaStops, 1 + world.Elevation[i]), // -1 (lo más hondo) da 0 en la escala
+            MapView.Elevation => i => ElevationColor(world.Elevation[i]),
             MapView.Temperature => i => Scale(TemperatureStops, world.Temperature[i]),
             MapView.Moisture => i => world.Water[i] ? NeutralWater : Scale(MoistureStops, world.Moisture[i]),
             _ => throw new ArgumentException("No es una vista de datos.", nameof(view))

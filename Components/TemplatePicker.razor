@@ -1,0 +1,100 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* Grilla de plantillas de relieve con miniaturas, como la de Azgaar. Las miniaturas usan la
+   semilla del continente actual: muestran cómo quedaría cada plantilla con esa semilla. *@
+<div class="template-grid">
+    @foreach (var (template, name, hint, _) in ReliefTemplates.All)
+    {
+        var selected = template == Value;
+        <button type="button" class="template-option @(selected ? "on" : "")"
+                aria-pressed="@(selected ? "true" : "false")" title="@hint"
+                @onclick="() => ValueChanged.InvokeAsync(template)">
+            @if (template == ReliefTemplate.Sketch)
+            {
+                @* El dibujo no tiene miniatura (se dibuja en el mapa): una costa trazada a mano. *@
+                <span class="template-placeholder template-sketch" aria-hidden="true">
+                    <svg viewBox="0 0 160 100">
+                        <path d="M30 60c-6-14 4-30 22-32 10-12 32-14 42-4 14-6 34 0 38 14 10 8 6 24-6 28
+                                 -4 12-24 16-36 10-12 8-34 8-44-2-12 2-22-4-16-14z" />
+                        <path d="M118 78l18-18 6 6-18 18-8 2z" />
+                    </svg>
+                </span>
+            }
+            else if (_images.TryGetValue(template, out var image))
+            {
+                <img src="@image" alt="" />
+            }
+            else
+            {
+                <span class="template-placeholder" aria-hidden="true"></span>
+            }
+            <span class="template-name">@name</span>
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>Semilla del continente: con otra semilla, otras miniaturas.</summary>
+    [Parameter] public int Seed { get; set; }
+
+    [Parameter] public ReliefTemplate Value { get; set; }
+    [Parameter] public EventCallback<ReliefTemplate> ValueChanged { get; set; }
+
+    // Tamaño de las miniaturas en píxeles: la proporción del mapa (16:10), chica para que sea rápido.
+    private const int Columns = 96;
+    private const int Rows = 60;
+
+    private readonly Dictionary<ReliefTemplate, string> _images = new();
+    private int? _renderedSeed;
+    private IJSObjectReference? _preview;
+    private bool _disposed;
+
+    /// <summary>
+    /// Arma las miniaturas cuando cambia la semilla. Una por vez, cediendo el control entre una
+    /// y otra: así aparecen de a poco y la interfaz no se congela mientras tanto.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_renderedSeed == Seed) return;
+
+        var seed = Seed;
+        _renderedSeed = seed;
+        _images.Clear();
+        _preview ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/preview.js");
+
+        foreach (var (template, _, _, _) in ReliefTemplates.All.Where(t => t.Template != ReliefTemplate.Sketch))
+        {
+            // Si se eligió una plantilla antes de que terminaran las miniaturas, la grilla se
+            // cerró y este componente ya se descartó (y con él el módulo de JavaScript).
+            if (_disposed) return;
+
+            var pixels = ReliefTemplates.Preview(template, seed, Columns, Rows);
+            string image;
+            try
+            {
+                image = await _preview.InvokeAsync<string>("toDataUrl", Columns, Rows, pixels);
+            }
+            catch (ObjectDisposedException)
+            {
+                return; // se descartó justo mientras se esperaba la respuesta
+            }
+
+            // Si mientras tanto cambió la semilla, ya hay otra tanda en camino: esta se abandona.
+            if (_disposed || _renderedSeed != seed) return;
+
+            _images[template] = image;
+            StateHasChanged();
+            await Task.Delay(1);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Primero se marca, así el bucle de miniaturas (que puede estar esperando una llamada a
+        // JavaScript) no vuelve a usar el módulo cuando retome.
+        _disposed = true;
+        if (_preview is not null)
+            await _preview.DisposeAsync();
+    }
+}

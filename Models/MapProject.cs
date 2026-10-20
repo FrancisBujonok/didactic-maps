@@ -21,6 +21,12 @@ public class MapProject
 
     /// <summary>Capa donde "Poblar mapa" pone los lugares que crea, o null si todavía no se pobló.</summary>
     public Guid? SettlementLayerId { get; set; }
+
+    /// <summary>
+    /// Dibujo de costa en el que se está trabajando (ver Sketches). Se guarda con el proyecto
+    /// para no perderlo al recargar; al generar se copia en GeneratorSettings.Sketch.
+    /// </summary>
+    public List<double[]> SketchDraft { get; set; } = new();
 }
 
 /// <summary>

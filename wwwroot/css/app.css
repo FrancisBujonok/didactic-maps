@@ -403,6 +403,69 @@ input[type="range"] {
     padding: 0;
 }
 
+/* ---------- plantillas de relieve (Components/TemplatePicker.razor) ---------- */
+
+.template-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+.template-option {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--fast), border-color var(--fast), color var(--fast);
+}
+
+/* Miniatura con la proporción del mapa (16:10). */
+.template-option img,
+.template-placeholder {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius);
+}
+
+.template-placeholder { background: var(--hover); }
+
+/* Ícono de la plantilla Dibujo: costa trazada a mano y un lápiz, en tinta sobre papel. */
+.template-sketch { display: flex; background: var(--paper); border: 1px solid var(--border); }
+.template-sketch svg { width: 100%; height: 100%; }
+.template-sketch path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+
+.sketch-preview {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.template-option:hover { background: var(--hover); border-color: var(--text); }
+
+/* Elegida: borde y nombre en el color del acento, sin tapar la miniatura. */
+.template-option.on,
+.template-option.on:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.template-option.on .template-name { color: var(--accent); font-weight: 700; }
+
 /* ---------- barra de colocación (modo "Colocar pines") ---------- */
 
 .placebar {
@@ -553,6 +616,44 @@ input[type="range"] {
     flex: none;
 }
 .viewport.inspecting { cursor: cell; }
+.viewport.sketching { cursor: crosshair; }
+
+/* ---- Dibujo de costa (modo "Dibujar costa") */
+
+/* Hoja en blanco del tamaño del mapa (2000 x 1250) cuando todavía no hay imagen. */
+.sketch-sheet {
+    width: 2000px;
+    height: 1250px;
+    background: var(--paper);
+    border: var(--focus) dashed var(--border);
+}
+
+.sketch-live {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+/* Islas ya dibujadas: relleno suave del acento y línea de tinta, de grosor fijo en pantalla. */
+.sketch-live .island {
+    fill: var(--accent);
+    fill-opacity: .2;
+    stroke: var(--ink);
+    stroke-width: calc(var(--focus) * var(--inv-scale, 1));
+    stroke-linejoin: round;
+}
+
+/* Trazo en curso: línea discontinua del acento, para distinguirlo de lo ya dibujado. */
+.sketch-live .live {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: calc(var(--focus) * var(--inv-scale, 1));
+    stroke-dasharray: calc(var(--space-2) * var(--inv-scale, 1)) calc(var(--space-1) * var(--inv-scale, 1));
+    stroke-linejoin: round;
+}
 
 /* Contorno de la celda seleccionada: mismo tamaño que el mapa, encima de la imagen y debajo
    de los pines. El grosor se divide por el zoom para verse siempre igual en pantalla. */

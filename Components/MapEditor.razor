@@ -27,7 +27,7 @@
                 <button class="btn danger" @onclick="NewProjectAsync">Nuevo</button>
             </div>
 
-            <GeneratorPanel OnGenerated="OnMapGenerated" OnPopulated="OnRegionsChanged" />
+            <GeneratorPanel OnGenerated="OnMapGenerated" OnPopulated="OnRegionsChanged" OnStartSketch="StartSketch" />
             <RegionPanel OnChanged="OnRegionsChanged" />
 
             <div class="section-head">
@@ -112,6 +112,24 @@
             <span class="status msg">@_message</span>
         </div>
 
+        @* Barra de dibujo: solo en "Dibujar costa". *@
+        @if (_mode == Mode.Sketch)
+        {
+            <div class="placebar">
+                <span class="placebar-label">
+                    <strong>Dibujar costa:</strong> arrastrá para trazar una isla.
+                    Botón del medio: mover el mapa. Rueda: zoom.
+                </span>
+                <div class="btn-row">
+                    <button class="btn small" disabled="@(Store.Project.SketchDraft.Count == 0)"
+                            @onclick="Store.UndoSketchStroke">Deshacer trazo</button>
+                    <button class="btn small" disabled="@(Store.Project.SketchDraft.Count == 0)"
+                            @onclick="ClearSketchAsync">Borrar todo</button>
+                    <button class="btn small" @onclick="() => _mode = Mode.Navigate">Terminar</button>
+                </div>
+            </div>
+        }
+
         @* Barra de colocación: solo en "Colocar pines". El tipo elegido es el de los pines nuevos. *@
         @if (_mode == Mode.AddPin)
         {
@@ -129,6 +147,24 @@
                 @if (!string.IsNullOrEmpty(Store.ImageDataUrl))
                 {
                     <img src="@Store.ImageDataUrl" alt="Mapa base" draggable="false" />
+                }
+                else if (_mode == Mode.Sketch)
+                {
+                    @* Sin imagen todavía: una hoja en blanco del tamaño del mapa para dibujar encima. *@
+                    <div class="sketch-sheet"></div>
+                }
+
+                @* Islas dibujadas y trazo en curso (el "d" del path vivo lo escribe mapview.js). *@
+                @if (_mode == Mode.Sketch)
+                {
+                    <svg class="sketch-live" viewBox="0 0 @F(MapGenerator.Width) @F(MapGenerator.Height)"
+                         preserveAspectRatio="none" aria-hidden="true">
+                        @foreach (var island in Store.Project.SketchDraft)
+                        {
+                            <path class="island" d="@IslandPath(island)" />
+                        }
+                        <path class="live" />
+                    </svg>
                 }
 
                 @* La vista elegida (reinos, altura...) es otra imagen del mismo tamaño, encima del terreno. *@
@@ -223,7 +259,7 @@
                 </div>
             }
 
-            @if (Store.Loaded && string.IsNullOrEmpty(Store.ImageDataUrl))
+            @if (Store.Loaded && string.IsNullOrEmpty(Store.ImageDataUrl) && _mode != Mode.Sketch)
             {
                 <div class="empty">
                     <p>
@@ -348,7 +384,7 @@
 </div>
 
 @code {
-    private enum Mode { Navigate, AddPin, Inspect }
+    private enum Mode { Navigate, AddPin, Inspect, Sketch }
 
     // Referencias a elementos del DOM que se le pasan a JavaScript.
     private ElementReference _viewport;
@@ -383,6 +419,7 @@
     protected override async Task OnInitializedAsync()
     {
         Store.StatusChanged += OnStatusChanged;
+        Store.SketchChanged += OnStatusChanged; // el dibujo cambió: se redibujan las islas
 
         await Store.InitAsync();
 
@@ -410,6 +447,7 @@
     public async ValueTask DisposeAsync()
     {
         Store.StatusChanged -= OnStatusChanged;
+        Store.SketchChanged -= OnStatusChanged;
 
         if (_mapJs is not null)
         {
@@ -521,6 +559,47 @@
 
     private void ClearCellSelection() => _selectedCells.Clear();
 
+    // ------------------------------------------------------------ dibujo de costa
+
+    /// <summary>Entra al modo "Dibujar costa" (lo pide el panel del generador).</summary>
+    private void StartSketch()
+    {
+        _mode = Mode.Sketch;
+        _selectedPinId = null;
+        _selectedCells.Clear();
+
+        // Sin imagen aparece la hoja en blanco: hay que ajustar el visor a ella.
+        if (string.IsNullOrEmpty(Store.ImageDataUrl)) _needsFit = true;
+    }
+
+    private async Task ClearSketchAsync()
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Borrar las {Store.Project.SketchDraft.Count} islas dibujadas?"))
+            Store.ClearSketch();
+    }
+
+    /// <summary>mapview.js avisa de un trazo terminado: coordenadas normalizadas [x0, y0, x1, y1, ...].</summary>
+    [JSInvokable]
+    public Task OnSketchStroke(double[] points) => InvokeAsync(() =>
+    {
+        if (_mode != Mode.Sketch) return;
+        _message = Store.AddSketchStroke(points) ? "" : "Ese trazo es muy chico para ser una isla: no se agregó.";
+        StateHasChanged();
+    });
+
+    // Isla del dibujo como path de SVG, en las coordenadas del viewBox (el tamaño del mapa).
+    private static string IslandPath(double[] island)
+    {
+        var d = new System.Text.StringBuilder();
+        for (var i = 0; i < island.Length; i += 2)
+        {
+            d.Append(i == 0 ? 'M' : 'L')
+             .Append(F(island[i] * MapGenerator.Width)).Append(' ')
+             .Append(F(island[i + 1] * MapGenerator.Height));
+        }
+        return d.Append('Z').ToString();
+    }
+
     // El panel de celdas cambió el mapa: no hay nada que hacer acá, pero recibir el aviso hace
     // que el editor se vuelva a dibujar con la imagen nueva.
     private void OnCellsEdited() { }
@@ -570,6 +649,10 @@
     {
         _needsFit = true;
         _selectedCells.Clear();
+
+        // Si se estaba dibujando, se vuelve a navegar: el contorno ya no hace falta encima del
+        // mapa nuevo (el dibujo se conserva; "Dibujar en el mapa" lo vuelve a mostrar).
+        if (_mode == Mode.Sketch) _mode = Mode.Navigate;
     }
 
     /// <summary>
@@ -794,6 +877,7 @@
     {
         Mode.AddPin => "adding",
         Mode.Inspect => "inspecting",
+        Mode.Sketch => "sketching",
         _ => ""
     };
 

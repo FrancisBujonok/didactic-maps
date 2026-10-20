@@ -16,7 +16,7 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 4. Creá otra capa, cambiale el color y ocultala con su casilla.
 5. Recargá la página: todo sigue ahí (se guarda en IndexedDB).
 6. "Exportar" genera un `.mundo.json` con todo, imagen incluida. "Importar" lo vuelve a cargar.
-7. En "Generar mapa", "Todo al azar" crea un continente nuevo. Cambiá una sola semilla y volvé a "Generar" para ver qué controla cada etapa. El estilo "Celdas" muestra la grilla del generador.
+7. En "Generar mapa", "Relieve" elige la forma de la tierra entre 10 plantillas con miniaturas (continente, continentes, pangea, archipiélago, isla volcánica, península, istmo, mediterráneo, atolón, fragmentado) o "Dibujo": con "Dibujar en el mapa" trazás tus islas a mano y "Fidelidad al trazo" decide cuánto se respeta la línea (100 %: la sigue; 10 %: inventa casi todo), con vista previa. "Todo al azar" crea un continente nuevo. Cambiá una sola semilla y volvé a "Generar" para ver qué controla cada etapa. El estilo "Celdas" muestra la grilla del generador.
 8. Con un mapa generado, "Ver celdas" en la barra: hacé clic en el mapa para ver terreno, altura, temperatura, humedad y ríos de esa celda.
 9. Shift + clic agrega o quita celdas y Shift + arrastrar las pinta. En el panel derecho podés cambiarles el terreno, subirlas, bajarlas, hacerlas tierra o agua, o restaurarlas. Los cambios se guardan y se mantienen al volver a generar con la misma semilla de continente.
 10. En "Reinos" (panel izquierdo) creá un reino; con celdas elegidas, asignalas desde el panel derecho. En la barra, "Vista" muestra el mapa por reinos, altura, temperatura o humedad, con su leyenda.
@@ -33,7 +33,10 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 - `Components/RegionPanel.razor`: la lista de reinos.
 - `Components/PinIcon.razor`: los íconos de los tipos de pin (SVG propios).
 - `Components/KindPicker.razor`: el selector visual de tipo (barra de colocación y ficha).
-- `Generation/`: el generador de mapas, una clase por etapa (malla, continente, clima, ríos, biomas, poblados), el dibujo en SVG, las vistas (`ThematicRenderer`) y los nombres (`NameGenerator`).
+- `Components/TemplatePicker.razor`: la grilla de plantillas de relieve con miniaturas.
+- `wwwroot/js/preview.js`: convierte los píxeles de una miniatura en imagen.
+- `Models/Sketches.cs`: ayudas del dibujo de costa (validación, simplificación de Ramer-Douglas-Peucker, área).
+- `Generation/`: el generador de mapas, una clase por etapa (malla, continente, clima, ríos, biomas, poblados), las plantillas de relieve (`ReliefShape`), el dibujo en SVG, las vistas (`ThematicRenderer`) y los nombres (`NameGenerator`).
 - `wwwroot/js/mapview.js`: zoom, arrastre y clics sobre el mapa.
 - `wwwroot/js/storage.js` y `files.js`: IndexedDB y selector/descarga de archivos.
 

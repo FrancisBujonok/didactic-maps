@@ -1,73 +1,70 @@
+using MapaMundos.Models;
+
 namespace MapaMundos.Generation;
 
 /// <summary>
 /// Etapa 1, continente: decide la altura de cada celda y qué es tierra, mar o lago.
 ///
-/// Idea: altura = ruido fractal - caída hacia los bordes. El ruido da costas irregulares,
-/// montañas e islas; la caída asegura que el agua rodee la tierra y no se corte en el borde.
-/// Después se elige el nivel del mar para que la tierra ocupe el porcentaje pedido.
+/// Idea: altura = ruido fractal + la forma de la plantilla (ver ReliefShape). El ruido da
+/// costas irregulares, montañas e islas; la forma decide dónde va la tierra (un continente,
+/// un archipiélago, un atolón...). Después se elige el nivel del mar para que la tierra ocupe
+/// el porcentaje pedido.
 /// </summary>
 public static class ReliefStage
 {
-    // Cuánto pesa la caída frente al ruido. Más alto: un continente compacto y central.
-    // Más bajo: archipiélagos que llegan cerca de los bordes.
-    private const double FalloffWeight = 0.55;
-    private const double EdgeDrop = 3;
-
-    public static void Apply(World world, int seed, double landRatio)
+    public static void Apply(World world, GeneratorSettings settings)
     {
         var mesh = world.Mesh;
-        var noise = new PerlinNoise(seed);
-
-        // Con la misma semilla, pero en otro generador, se eligen la posición del centro del
-        // continente y el tamaño de sus rasgos. Así no todos los mundos quedan centrados.
-        var rng = new Rng(seed + 1);
-        var centerX = 0.5 + rng.Range(-0.08, 0.08);
-        var centerY = 0.5 + rng.Range(-0.08, 0.08);
-        var frequency = rng.Range(2.0, 3.2);
+        var shape = ReliefShape.Create(settings.Template, settings.ContinentSeed, mesh.Width, mesh.Height,
+            settings.Sketch, settings.SketchFidelity);
 
         var raw = new double[mesh.Count];
         for (var i = 0; i < mesh.Count; i++)
         {
-            if (mesh.IsBorder[i])
-            {
-                raw[i] = double.MinValue; // el borde de la grilla siempre es mar
-                continue;
-            }
-
-            // Coordenadas del ruido divididas por el alto: los rasgos no se estiran
-            // aunque el mapa sea más ancho que alto.
-            var nx = mesh.X[i] / mesh.Height * frequency;
-            var ny = mesh.Y[i] / mesh.Height * frequency;
-
-            // Distancia al centro, de 0 (centro) a 1 (mitad de un borde).
-            var dx = (mesh.X[i] / mesh.Width - centerX) * 2;
-            var dy = (mesh.Y[i] / mesh.Height - centerY) * 2;
-
-            // Caída suave hacia afuera, más una caída brusca solo muy cerca de los bordes
-            // (la potencia 8 vale casi 0 hasta 0.7 y crece rápido después): así la tierra
-            // nunca queda cortada por el borde del mapa.
-            var edge = Math.Pow(Math.Max(Math.Abs(dx), Math.Abs(dy)), 8);
-            raw[i] = noise.Fractal(nx, ny, 5) - FalloffWeight * (dx * dx + dy * dy) - EdgeDrop * edge;
+            raw[i] = mesh.IsBorder[i]
+                ? double.MinValue // el borde de la grilla siempre es mar
+                : shape.Height(mesh.X[i], mesh.Y[i]);
         }
 
-        // Nivel del mar: si se ordenan las alturas, el valor que deja abajo al (1 - landRatio)
-        // de las celdas. Por eso el porcentaje de tierra se cumple siempre, sea cual sea el ruido.
-        var interior = raw.Where(v => v > double.MinValue).OrderBy(v => v).ToArray();
-        var seaLevel = interior[(int)((1 - landRatio) * (interior.Length - 1))];
-        var lowest = interior[0];
-        var highest = interior[^1];
+        var (seaLevel, lowest, highest) = Levels(raw.Where(v => v > double.MinValue), shape, settings.LandRatio);
 
         // Se reescala para que el nivel del mar sea 0, la cima 1 y el fondo -1.
         for (var i = 0; i < mesh.Count; i++)
-        {
-            var v = Math.Max(raw[i], lowest);
-            world.Elevation[i] = v > seaLevel
-                ? (v - seaLevel) / (highest - seaLevel)
-                : (v - seaLevel) / (seaLevel - lowest);
-        }
+            world.Elevation[i] = Scale(Math.Max(raw[i], lowest), seaLevel, lowest, highest, shape.LandBase);
 
         FindWater(world);
+    }
+
+    /// <summary>
+    /// Nivel del mar, altura mínima y máxima. Normalmente el nivel del mar es el valor que, si
+    /// se ordenan las alturas, deja abajo al (1 - landRatio) de ellas: así el porcentaje de tierra
+    /// se cumple siempre, sea cual sea el ruido. Con el dibujo es fijo (0): la tierra es la que
+    /// dibujó el autor. Lo usan esta etapa y las miniaturas, para que coincidan.
+    /// </summary>
+    public static (double SeaLevel, double Lowest, double Highest) Levels(IEnumerable<double> heights, ReliefShape shape, double landRatio)
+    {
+        var sorted = heights.OrderBy(v => v).ToArray();
+        var seaLevel = shape.FixedSeaLevel ? 0 : sorted[(int)((1 - landRatio) * (sorted.Length - 1))];
+
+        // Con un dibujo vacío o diminuto puede no haber tierra (o no haber mar): se corre el
+        // extremo un poco para no dividir por cero al reescalar.
+        var lowest = Math.Min(sorted[0], seaLevel - 1e-6);
+        var highest = Math.Max(sorted[^1], seaLevel + 1e-6);
+        return (seaLevel, lowest, highest);
+    }
+
+    /// <summary>
+    /// Reescala una altura cruda: nivel del mar 0, cima 1, fondo -1. Con landBase (el dibujo),
+    /// la tierra se mide desde esa altura: lo que queda por debajo es llanura baja (0.01, apenas
+    /// sobre el mar para seguir siendo tierra) y solo lo que sube por encima gana altura.
+    /// </summary>
+    public static double Scale(double value, double seaLevel, double lowest, double highest, double landBase = 0)
+    {
+        if (value <= seaLevel) return (value - seaLevel) / (seaLevel - lowest);
+        if (landBase <= 0) return (value - seaLevel) / (highest - seaLevel);
+
+        var above = (value - seaLevel - landBase) / (highest - seaLevel - landBase);
+        return 0.01 + 0.99 * Math.Clamp(above, 0, 1);
     }
 
     /// <summary>

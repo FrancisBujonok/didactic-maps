@@ -2,7 +2,8 @@
 //
 // Lo que ocurre todo el tiempo (mover el mouse, usar la rueda) se resuelve acá, en JavaScript.
 // A C# solo se le avisa de lo importante: un clic en el mapa, un pin que se movió o las
-// celdas que pinta el pincel de selección (Shift + arrastrar en "Ver celdas").
+// celdas que pinta el pincel de selección (Shift + arrastrar en "Ver celdas") o un trazo terminado
+// del dibujo de costa ("Dibujar costa").
 //
 // Idea clave: el mapa (.world) tiene el tamaño real de la imagen y se mueve/escala con una
 // transformación CSS: translate(x, y) scale(escala). Los pines están DENTRO de .world, así que
@@ -82,6 +83,26 @@ export function init(viewport, world, dotnet) {
     };
   };
 
+  // Trazo en curso del dibujo de costa. Blazor dibuja un <path class="live"> vacío dentro de
+  // .sketch-live y acá solo se le cambia el atributo "d" (Blazor no lo pisa porque nunca lo
+  // escribe). Las coordenadas usan el viewBox de ese SVG, el mismo que usan las islas dibujadas.
+  const drawLive = (points) => {
+    const svg = world.querySelector('.sketch-live');
+    const path = svg && svg.querySelector('path.live');
+    if (!path) return;
+    if (!points || points.length < 4) {
+      path.setAttribute('d', '');
+      return;
+    }
+    const w = svg.viewBox.baseVal.width;
+    const h = svg.viewBox.baseVal.height;
+    let d = '';
+    for (let i = 0; i < points.length; i += 2) {
+      d += `${i === 0 ? 'M' : 'L'}${(points[i] * w).toFixed(1)} ${(points[i + 1] * h).toFixed(1)}`;
+    }
+    path.setAttribute('d', d + 'Z');
+  };
+
   // Si pedimos ajustar mientras la imagen todavía carga, se ajusta cuando termine de cargar.
   // ('load' no burbujea, por eso se escucha en la fase de captura.)
   listen(world, 'load', () => {
@@ -130,8 +151,21 @@ export function init(viewport, world, dotnet) {
       dotnet.invokeMethodAsync('OnCellPaint', clamp(p.x, 0, 1), clamp(p.y, 0, 1), true);
     }
 
+    // En el modo "Dibujar costa", arrastrar con el botón izquierdo traza una isla (el botón del
+    // medio sigue moviendo el mapa). Los puntos se juntan acá y van a C# al soltar.
+    const sketching = e.button === 0 && viewport.classList.contains('sketching');
+    let points = null;
+    if (sketching) {
+      const p = toMap(e.clientX, e.clientY);
+      points = [clamp(p.x, 0, 1), clamp(p.y, 0, 1)];
+      drawLive(points);
+    }
+
     drag = {
-      kind: pinEl ? 'pin' : painting ? 'paint' : 'pan',
+      kind: sketching ? 'sketch' : pinEl ? 'pin' : painting ? 'paint' : 'pan',
+      points,
+      lastX: e.clientX,
+      lastY: e.clientY,
       button: e.button,
       pinEl,
       startX: e.clientX,
@@ -159,6 +193,14 @@ export function init(viewport, world, dotnet) {
     } else if (drag.kind === 'paint') {
       const p = toMap(e.clientX, e.clientY);
       dotnet.invokeMethodAsync('OnCellPaint', clamp(p.x, 0, 1), clamp(p.y, 0, 1), false);
+    } else if (drag.kind === 'sketch') {
+      // Un punto cada 3 píxeles de pantalla alcanza: después C# simplifica igual.
+      if (Math.hypot(e.clientX - drag.lastX, e.clientY - drag.lastY) < 3) return;
+      drag.lastX = e.clientX;
+      drag.lastY = e.clientY;
+      const p = toMap(e.clientX, e.clientY);
+      drag.points.push(clamp(p.x, 0, 1), clamp(p.y, 0, 1));
+      drawLive(drag.points);
     } else {
       const p = toMap(e.clientX, e.clientY);
       drag.pos = { x: clamp(p.x, 0, 1), y: clamp(p.y, 0, 1) };
@@ -181,6 +223,13 @@ export function init(viewport, world, dotnet) {
 
     if (d.kind === 'paint') return; // la celda del clic ya se pintó al apretar
 
+    if (d.kind === 'sketch') {
+      drawLive(null);
+      // Al menos 3 puntos (6 números): C# cierra la isla, la simplifica y descarta garabatos.
+      if (d.points.length >= 6) dotnet.invokeMethodAsync('OnSketchStroke', d.points);
+      return;
+    }
+
     if (!d.moved && d.button === 0) {
       const p = toMap(e.clientX, e.clientY);
       const inside = p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
@@ -197,7 +246,9 @@ export function init(viewport, world, dotnet) {
 export function fit() {
   if (!state) return;
   const img = state.world.querySelector('img');
-  if (img && img.complete && img.naturalWidth > 0) {
+  if (!img || (img.complete && img.naturalWidth > 0)) {
+    // Sin imagen (por ejemplo, la hoja en blanco para dibujar la costa) se ajusta al tamaño de
+    // lo que haya en .world; si no hay nada, doFit lo deja pendiente.
     state.pendingFit = false;
     state.doFit();
   } else {

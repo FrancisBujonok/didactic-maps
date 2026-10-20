@@ -11,6 +11,21 @@
 
     <p class="hint">Cada etapa tiene su semilla: si cambiás una, las anteriores quedan igual.</p>
 
+    @* Relieve: la plantilla actual y, al tocar "Cambiar", la grilla con miniaturas. *@
+    <div class="field">
+        <span>Relieve</span>
+        <div class="template-row">
+            <span class="kind-name">@ReliefTemplates.Info(_settings.Template).Name</span>
+            <button type="button" class="btn small" aria-expanded="@(_choosingTemplate ? "true" : "false")"
+                    @onclick="() => _choosingTemplate = !_choosingTemplate">@(_choosingTemplate ? "Listo" : "Cambiar")</button>
+        </div>
+        @if (_choosingTemplate)
+        {
+            <TemplatePicker Seed="_settings.ContinentSeed" Value="_settings.Template" ValueChanged="ChooseTemplate" />
+            <p class="hint">Las miniaturas usan la semilla del continente. Con "Otra" cambian.</p>
+        }
+    </div>
+
     @foreach (var seed in Seeds)
     {
         <div class="seed-row" @key="seed.Id">
@@ -23,11 +38,43 @@
         </div>
     }
 
-    <label class="field">
-        <span>Tierra: @LandPercent %</span>
-        <input type="range" min="20" max="70" step="5"
-               @bind="LandPercent" @bind:event="oninput" />
-    </label>
+    @if (_settings.Template == ReliefTemplate.Sketch)
+    {
+        @* Dibujo: la tierra sale de las islas dibujadas, no de un porcentaje. *@
+        <div class="sketch-tools">
+            <p class="hint">
+                @(Store.Project.SketchDraft.Count switch
+                {
+                    0 => "Todavía no dibujaste ninguna isla.",
+                    1 => "1 isla dibujada.",
+                    var n => $"{n} islas dibujadas."
+                })
+            </p>
+            <div class="btn-row">
+                <button class="btn" disabled="@_busy" @onclick="OnStartSketch">Dibujar en el mapa</button>
+            </div>
+
+            <label class="field">
+                <span>Fidelidad al trazo: @FidelityPercent %</span>
+                <input type="range" min="0" max="100" step="5"
+                       @bind="FidelityPercent" @bind:event="oninput" @onchange="UpdateSketchPreviewAsync" />
+            </label>
+            <p class="hint">Al 100 % la costa sigue tu línea; al 10 % tu dibujo es apenas una sugerencia.</p>
+
+            @if (_sketchPreview is not null)
+            {
+                <img class="sketch-preview" src="@_sketchPreview" alt="Vista previa del relieve con el dibujo" />
+            }
+        </div>
+    }
+    else
+    {
+        <label class="field">
+            <span>Tierra: @LandPercent %</span>
+            <input type="range" min="5" max="70" step="5"
+                   @bind="LandPercent" @bind:event="oninput" />
+        </label>
+    }
 
     <label class="field">
         <span>Detalle</span>
@@ -121,6 +168,59 @@
     private bool _busy;
     private string? _status;
     private string? _populateStatus;
+    private bool _choosingTemplate;
+
+    /// <summary>
+    /// Elige la plantilla y propone su porcentaje de tierra (un atolón con 40 % de tierra no es
+    /// un atolón). Después se puede ajustar con el deslizador. Se aplica al tocar "Generar".
+    /// </summary>
+    private async Task ChooseTemplate(ReliefTemplate template)
+    {
+        _settings.Template = template;
+        if (template != ReliefTemplate.Sketch)
+            _settings.LandRatio = ReliefTemplates.Info(template).LandRatio;
+        _choosingTemplate = false;
+        await UpdateSketchPreviewAsync();
+    }
+
+    // ---- Dibujo
+
+    /// <summary>Se dispara al tocar "Dibujar en el mapa": el editor entra al modo de dibujo.</summary>
+    [Parameter] public EventCallback OnStartSketch { get; set; }
+
+    private string? _sketchPreview;
+    private IJSObjectReference? _preview;
+
+    private int FidelityPercent
+    {
+        get => (int)Math.Round(_settings.SketchFidelity * 100);
+        set => _settings.SketchFidelity = value / 100.0;
+    }
+
+    /// <summary>
+    /// Miniatura del relieve con el dibujo actual y la fidelidad elegida, para ver el efecto
+    /// antes de generar. Se rehace al terminar un trazo o al soltar el deslizador (no mientras
+    /// se arrastra: tarda una fracción de segundo y trabaría el deslizador).
+    /// </summary>
+    private async Task UpdateSketchPreviewAsync()
+    {
+        if (_settings.Template != ReliefTemplate.Sketch || Store.Project.SketchDraft.Count == 0)
+        {
+            _sketchPreview = null;
+            return;
+        }
+
+        _preview ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/preview.js");
+        var pixels = ReliefTemplates.Preview(ReliefTemplate.Sketch, _settings.ContinentSeed, 96, 60,
+            Store.Project.SketchDraft, _settings.SketchFidelity);
+        _sketchPreview = await _preview.InvokeAsync<string>("toDataUrl", 96, 60, pixels);
+    }
+
+    private void OnSketchChanged() => _ = InvokeAsync(async () =>
+    {
+        await UpdateSketchPreviewAsync();
+        StateHasChanged();
+    });
 
     private SeedRow PopulationSeed => new("poblados", "Semilla", "Dónde caen los poblados y cómo se llaman",
         () => _settings.SettlementSeed, v => _settings.SettlementSeed = v);
@@ -181,13 +281,22 @@
 
     // Las ediciones a mano se hacen desde otro panel. Cada vez que el proyecto se guarda, el
     // servicio avisa, y este panel se vuelve a dibujar para mostrar la cantidad actualizada.
-    protected override void OnInitialized() => Store.StatusChanged += OnStoreChanged;
+    protected override void OnInitialized()
+    {
+        Store.StatusChanged += OnStoreChanged;
+        Store.SketchChanged += OnSketchChanged;
+    }
 
-    public void Dispose() => Store.StatusChanged -= OnStoreChanged;
+    public void Dispose()
+    {
+        Store.StatusChanged -= OnStoreChanged;
+        Store.SketchChanged -= OnSketchChanged;
+        _ = _preview?.DisposeAsync();
+    }
 
     private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         // Si se importó otro proyecto o se empezó uno nuevo, se muestran sus parámetros.
         if (!ReferenceEquals(_project, Store.Project))
@@ -195,6 +304,7 @@
             _project = Store.Project;
             _settings = _project.Generator?.Clone() ?? GeneratorSettings.CreateRandom();
             _status = null;
+            await UpdateSketchPreviewAsync();
         }
     }
 
@@ -210,6 +320,7 @@
         random.LandRatio = _settings.LandRatio;
         random.CellSize = _settings.CellSize;
         random.Style = _settings.Style;
+        random.Template = _settings.Template;
         random.SettlementDensity = _settings.SettlementDensity;
         random.KingdomCount = _settings.KingdomCount;
         await GenerateAsync(random);
@@ -220,6 +331,18 @@
     private async Task GenerateAsync(GeneratorSettings settings)
     {
         if (_busy) return;
+
+        // Con la plantilla Dibujo, el dibujo en curso pasa a ser parte de los parámetros: así la
+        // misma configuración rearma siempre el mismo mundo aunque después se siga dibujando.
+        if (settings.Template == ReliefTemplate.Sketch)
+        {
+            if (Store.Project.SketchDraft.Count == 0)
+            {
+                _status = "Dibujá al menos una isla con \"Dibujar en el mapa\".";
+                return;
+            }
+            settings.Sketch = Sketches.Copy(Store.Project.SketchDraft);
+        }
 
         // Si la imagen actual vino de un archivo, se pregunta antes de reemplazarla.
         if (Store.ImageDataUrl is not null && Store.Project.Generator is null &&
@@ -241,6 +364,18 @@
                 return;
             }
             Store.ClearCellData();
+        }
+        else if (previous is not null && Store.GeneratedPinCount > 0 && MapGenerator.ChangesCoast(previous, settings))
+        {
+            // Mismas celdas, otra costa: las ediciones siguen valiendo, pero los lugares
+            // generados pueden quedar en el mar. Se borran para volver a poblar.
+            if (!await JS.InvokeAsync<bool>("confirm",
+                    $"Cambia la forma de la tierra: se borran los {Store.GeneratedPinCount} lugares generados " +
+                    "(los que editaste se conservan). Después podés volver a poblar. ¿Continuar?"))
+            {
+                return;
+            }
+            Store.RemoveGeneratedPins();
         }
 
         _settings = settings.Clone();
