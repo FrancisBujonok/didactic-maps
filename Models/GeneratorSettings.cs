@@ -56,6 +56,13 @@ public class GeneratorSettings
     /// <summary>Zonas dibujadas que no son tierra (agua, cordilleras, biomas), usadas en el mapa actual.</summary>
     public List<SketchFeature> SketchFeatures { get; set; } = new();
 
+    /// <summary>
+    /// True si los dibujos valen también con otras plantillas (como retoques). Los mapas
+    /// guardados antes de los retoques no la tienen (false): con una plantilla que no era Dibujo,
+    /// su dibujo viejo se ignoraba, y así se sigue ignorando (ver Normalize).
+    /// </summary>
+    public bool Retouches { get; set; }
+
     /// <summary>Latitud del mapa y manchas de humedad.</summary>
     public int ClimateSeed { get; set; }
 
@@ -138,5 +145,13 @@ public class GeneratorSettings
             Template = ReliefTemplate.Continent;
         if (!Enum.IsDefined(Style))
             Style = MapStyle.Painted;
+
+        // Un mapa de antes de los retoques, hecho con otra plantilla, puede guardar un dibujo
+        // viejo que nunca se usó: se descarta para que el mundo se rearme igual que su imagen.
+        if (Template != ReliefTemplate.Sketch && !Retouches)
+        {
+            Sketch.Clear();
+            SketchFeatures.Clear();
+        }
     }
 }

@@ -677,6 +677,18 @@ input[type="range"] {
 
 .placebar .sketch-biome { width: auto; padding: var(--space-1) var(--space-2); }
 
+/* Goma: los trazos reciben el mouse (el resto del SVG no) y el que está debajo se marca con
+   el acento, así se ve cuál se va a borrar antes de hacer clic. */
+.viewport.sketch-eraser { cursor: default; }
+.viewport.sketch-eraser .sketch-live path:not(.live) {
+    pointer-events: visiblePainted;
+    cursor: pointer;
+}
+.viewport.sketch-eraser .sketch-live path:not(.live):hover {
+    stroke: var(--accent);
+    stroke-dasharray: none;
+}
+
 /* Trazo en curso: línea discontinua del acento, para distinguirlo de lo ya dibujado. */
 .sketch-live .live {
     fill: none;

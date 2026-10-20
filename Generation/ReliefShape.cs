@@ -29,31 +29,30 @@ public static class ReliefTemplates
     /// Miniatura de la plantilla: la misma forma que se generaría, calculada en una grilla chica
     /// en vez de en las celdas, con la tierra sugerida y los colores de la vista "Altura".
     /// Devuelve los píxeles como bytes RGBA (rojo, verde, azul, opacidad), fila por fila, que es
-    /// el formato que entiende el canvas del navegador.
+    /// el formato que entiende el canvas del navegador. landRatio: la tierra pedida (null = la
+    /// sugerida por la plantilla; la usan las miniaturas de la grilla).
     /// </summary>
     public static byte[] Preview(ReliefTemplate template, int seed, int columns, int rows,
-        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7, IReadOnlyList<SketchFeature>? features = null)
+        IReadOnlyList<double[]>? sketch = null, double fidelity = 0.7, IReadOnlyList<SketchFeature>? features = null,
+        double? landRatio = null)
     {
         var shape = ReliefShape.Create(template, seed, MapGenerator.Width, MapGenerator.Height, sketch, fidelity, features);
-        var values = new double[columns * rows];
+
+        // Centro de cada píxel de la miniatura, en píxeles del mapa, fila por fila.
+        var points = new (double X, double Y)[columns * rows];
         for (var r = 0; r < rows; r++)
         {
             for (var c = 0; c < columns; c++)
-            {
-                // Centro de cada píxel de la miniatura, en píxeles del mapa.
-                var x = (c + 0.5) / columns * MapGenerator.Width;
-                var y = (r + 0.5) / rows * MapGenerator.Height;
-                values[r * columns + c] = shape.Height(x, y);
-            }
+                points[r * columns + c] = ((c + 0.5) / columns * MapGenerator.Width, (r + 0.5) / rows * MapGenerator.Height);
         }
 
-        // Mismo nivel del mar y misma escala que ReliefStage.
-        var (seaLevel, lowest, highest) = ReliefStage.Levels(values, shape, Info(template).LandRatio);
+        // Mismo nivel del mar, mismos retoques y misma escala que ReliefStage.
+        var values = ReliefStage.Elevations(shape, points, null, landRatio ?? Info(template).LandRatio);
 
         var pixels = new byte[columns * rows * 4];
         for (var i = 0; i < values.Length; i++)
         {
-            var elevation = ReliefStage.Scale(values[i], seaLevel, lowest, highest, shape.LandBase);
+            var elevation = values[i];
             var hex = ThematicRenderer.ElevationColor(elevation);
             pixels[i * 4] = Convert.ToByte(hex.Substring(1, 2), 16);
             pixels[i * 4 + 1] = Convert.ToByte(hex.Substring(3, 2), 16);
@@ -181,6 +180,21 @@ public sealed class ReliefShape
     private const double RangeHeight = 0.9;
     private const double RangeWidth = 40;
 
+    // ---- Retoques dibujados sobre las otras plantillas (ver Overlay)
+
+    // Distancia afuera de una isla agregada (en píxeles del mapa) donde su efecto ya es 0.
+    private const double RetouchFadeEnd = 240;
+
+    // Altura de una isla agregada: su punto más alto llega a RetouchPeak de la cima de la
+    // plantilla (0.55: colinas, no montañas; las montañas se dibujan aparte). RetouchDetailPeak
+    // es lo más alto que suele dar el ruido de detalle (medido: 95 % de los valores por debajo).
+    private const double RetouchPeak = 0.55;
+    private const double RetouchDetailPeak = 0.3;
+
+    private List<(double X, double Y)[]> _extraIslands = new();
+    private List<(double MinX, double MinY, double MaxX, double MaxY)> _extraBoxes = new();
+    private PerlinNoise? _overlayNoise; // detalle de las costas retocadas (null: no hay retoques)
+
     /// <summary>
     /// True si el nivel del mar es fijo (altura 0) en vez de elegirse por porcentaje de tierra.
     /// Pasa con el dibujo: la tierra es la que dibujó el autor, no un porcentaje pedido.
@@ -251,6 +265,61 @@ public sealed class ReliefShape
         foreach (var feature in _features)
             value += feature.At(x, y);
         return value - EdgeDrop * EdgeTerm(x, y);
+    }
+
+    /// <summary>
+    /// Retoques dibujados encima de una plantilla común (no de la plantilla Dibujo, donde el
+    /// dibujo ya es la base). Se aplican después de elegir el nivel del mar con la plantilla
+    /// sola, y se miden desde ese nivel: así una isla agregada se suma, en lugar de que el
+    /// porcentaje de tierra hunda tierra en otro lado para compensarla.
+    /// - Tierra: gana donde la isla dibujada es más alta que el relieve (el mar pasa a tierra).
+    /// - Agua: gana donde es más baja (la tierra pasa a agua: borrar, lagos, bahías).
+    /// - Cordilleras: se suman al relieve.
+    /// landHeight es la altura de la cima de la plantilla sobre el mar: los retoques se miden
+    /// con esa vara para que su relieve se parezca al del resto del mapa.
+    /// </summary>
+    public double Overlay(double x, double y, double raw, double seaLevel, double landHeight)
+    {
+        if (_islands is not null || _overlayNoise is null) return raw;
+
+        var v = raw - seaLevel; // altura sobre el mar: positiva es tierra
+        var detail = _overlayNoise.Fractal(x / _height * 3, y / _height * 3, 5); // costas irregulares
+
+        if (_extraIslands.Count > 0)
+        {
+            // La costa sale igual que con la plantilla Dibujo: donde fuerza + ruido vale 0.
+            var distance = SignedDistance(_extraIslands, _extraBoxes, x, y);
+            var cap = Math.Min(_sketchStrength * SketchInsideCap, SketchPlateau);
+            var pull = Math.Clamp(_sketchStrength * distance / SketchScale, _sketchStrength * SketchOutsideCap, cap);
+
+            // La altura, en cambio, se lleva a la escala de la plantilla (multiplicar no mueve el
+            // 0, así que la costa no cambia). Sin esto, la meseta de Dibujo quedaba a altura de
+            // montaña: en la prueba, el centro de una isla chica salía con nieves eternas.
+            var island = (pull + detail) / (cap + RetouchDetailPeak) * RetouchPeak * landHeight;
+
+            // Alcance: el retoque pesa entero hasta 60 px afuera de la línea y se desvanece hasta
+            // 240 px. Sin esto, con fidelidad baja el ruido levantaba islotes en cualquier parte.
+            var t = Math.Clamp((distance + RetouchFadeEnd) / (RetouchFadeEnd - SketchScale), 0, 1);
+            var weight = t * t * (3 - 2 * t); // "smoothstep": arranca y termina suave, sin escalones
+            v += weight * (Math.Max(v, island) - v);
+        }
+
+        if (_water.Count > 0)
+        {
+            var waterStrength = 2 * _sketchStrength;
+            var waterPull = Math.Max(-waterStrength * SignedDistance(_water, _waterBoxes, x, y) / SketchScale,
+                waterStrength * SketchOutsideCap);
+            v = Math.Min(v, waterPull + detail);
+        }
+
+        // Cordilleras: la misma loma que en Dibujo, medida con la cima de la plantilla.
+        foreach (var range in _ranges)
+        {
+            var d = Sketches.DistanceToPolyline(range, x, y) / RangeWidth;
+            if (d < 3) v += RangeHeight * landHeight * Math.Exp(-d * d);
+        }
+
+        return v + seaLevel;
     }
 
     // Caída brusca solo muy cerca de los bordes cerrados (potencia 8: casi 0 hasta 0.7 de la
@@ -509,6 +578,26 @@ public sealed class ReliefShape
                 shape._centerY = 0.5 + rng.Range(-0.08, 0.08);
                 shape._frequency = rng.Range(2.0, 3.2);
                 break;
+        }
+
+        // Retoques dibujados encima de las otras plantillas. Se arman después de la plantilla y
+        // con su propio ruido, así no cambian ningún número al azar de la forma: un mapa sin
+        // dibujos sale idéntico a antes.
+        var drawnIslands = sketch ?? Array.Empty<double[]>();
+        var drawnFeatures = features ?? Array.Empty<SketchFeature>();
+        if (template != ReliefTemplate.Sketch && (drawnIslands.Count > 0 || drawnFeatures.Count > 0))
+        {
+            shape._extraIslands = drawnIslands.Select(flat => Sketches.ToPixels(flat, w, h)).Where(p => p.Length >= 3).ToList();
+            shape._extraBoxes = shape._extraIslands.Select(BoundingBox).ToList();
+            shape._water = drawnFeatures.Where(f => f.Kind == SketchFeatureKind.Water)
+                .Select(f => Sketches.ToPixels(f.Points, w, h)).Where(p => p.Length >= 3).ToList();
+            shape._waterBoxes = shape._water.Select(BoundingBox).ToList();
+            shape._ranges = drawnFeatures.Where(f => f.Kind == SketchFeatureKind.Mountains)
+                .Select(f => Sketches.ToPixels(f.Points, w, h)).Where(p => p.Length >= 2).ToList();
+
+            fidelity = Math.Clamp(fidelity, 0, 1);
+            shape._sketchStrength = 0.02 + 2 * fidelity * fidelity;
+            shape._overlayNoise = new PerlinNoise(seed + 3);
         }
 
         return shape;

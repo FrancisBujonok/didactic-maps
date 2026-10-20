@@ -154,16 +154,18 @@ export function init(viewport, world, dotnet) {
 
     // En el modo "Dibujar costa", arrastrar con el botón izquierdo traza una isla (el botón del
     // medio sigue moviendo el mapa). Los puntos se juntan acá y van a C# al soltar.
+    // Con la goma (clase sketch-eraser) no se traza: se borra el trazo bajo el punto al soltar.
     const sketching = e.button === 0 && viewport.classList.contains('sketching');
+    const erasing = sketching && viewport.classList.contains('sketch-eraser');
     let points = null;
-    if (sketching) {
+    if (sketching && !erasing) {
       const p = toMap(e.clientX, e.clientY);
       points = [clamp(p.x, 0, 1), clamp(p.y, 0, 1)];
       drawLive(points);
     }
 
     drag = {
-      kind: sketching ? 'sketch' : pinEl ? 'pin' : painting ? 'paint' : 'pan',
+      kind: erasing ? 'erase' : sketching ? 'sketch' : pinEl ? 'pin' : painting ? 'paint' : 'pan',
       points,
       lastX: e.clientX,
       lastY: e.clientY,
@@ -223,6 +225,13 @@ export function init(viewport, world, dotnet) {
     }
 
     if (d.kind === 'paint') return; // la celda del clic ya se pintó al apretar
+
+    if (d.kind === 'erase') {
+      // Se borra donde se apretó (si el mouse se corrió un poco, no importa).
+      const p = toMap(d.startX, d.startY);
+      dotnet.invokeMethodAsync('OnSketchErase', clamp(p.x, 0, 1), clamp(p.y, 0, 1));
+      return;
+    }
 
     if (d.kind === 'sketch') {
       drawLive(null);

@@ -18,21 +18,48 @@ public static class ReliefStage
         var shape = ReliefShape.Create(settings.Template, settings.ContinentSeed, mesh.Width, mesh.Height,
             settings.Sketch, settings.SketchFidelity, settings.SketchFeatures);
 
-        var raw = new double[mesh.Count];
-        for (var i = 0; i < mesh.Count; i++)
-        {
-            raw[i] = mesh.IsBorder[i]
-                ? double.MinValue // el borde de la grilla siempre es mar
-                : shape.Height(mesh.X[i], mesh.Y[i]);
-        }
-
-        var (seaLevel, lowest, highest) = Levels(raw.Where(v => v > double.MinValue), shape, settings.LandRatio);
-
-        // Se reescala para que el nivel del mar sea 0, la cima 1 y el fondo -1.
-        for (var i = 0; i < mesh.Count; i++)
-            world.Elevation[i] = Scale(Math.Max(raw[i], lowest), seaLevel, lowest, highest, shape.LandBase);
+        var points = Enumerable.Range(0, mesh.Count).Select(i => (mesh.X[i], mesh.Y[i])).ToArray();
+        var elevations = Elevations(shape, points, mesh.IsBorder, settings.LandRatio);
+        Array.Copy(elevations, world.Elevation, mesh.Count);
 
         FindWater(world);
+    }
+
+    /// <summary>
+    /// Alturas finales (-1 a 1, mar en 0) de una lista de puntos en píxeles del mapa. La usan
+    /// esta etapa (centros de celda) y las miniaturas (píxeles), así se ven iguales. Va en dos
+    /// pasos para que los retoques dibujados no muevan el resto del mapa:
+    /// 1. Relieve de la plantilla y su nivel del mar (por cuantil, como siempre).
+    /// 2. Retoques encima, medidos desde ese nivel del mar: una isla agregada no le "roba" tierra
+    ///    a la costa de otro lado, y un agua dibujada no hace crecer la tierra en otra parte.
+    /// Sin retoques, el paso 2 no cambia nada y el mapa sale igual que antes.
+    /// </summary>
+    public static double[] Elevations(ReliefShape shape, IReadOnlyList<(double X, double Y)> points,
+        IReadOnlyList<bool>? border, double landRatio)
+    {
+        var raw = new double[points.Count];
+        for (var i = 0; i < points.Count; i++)
+        {
+            raw[i] = border is not null && border[i]
+                ? double.MinValue // el borde de la grilla siempre es mar
+                : shape.Height(points[i].X, points[i].Y);
+        }
+
+        var (seaLevel, lowest, highest) = Levels(raw.Where(v => v > double.MinValue), shape, landRatio);
+
+        for (var i = 0; i < points.Count; i++)
+        {
+            if (raw[i] > double.MinValue)
+                raw[i] = shape.Overlay(points[i].X, points[i].Y, raw[i], seaLevel, highest - seaLevel);
+        }
+
+        // Se reescala para que el nivel del mar sea 0, la cima 1 y el fondo -1, con la cima y el
+        // fondo de la plantilla sola. Si un retoque sube más (una cordillera dibujada) se recorta
+        // en 1: con la cima nueva, todas las montañas del resto del mapa bajarían.
+        var result = new double[points.Count];
+        for (var i = 0; i < points.Count; i++)
+            result[i] = Math.Clamp(Scale(Math.Max(raw[i], lowest), seaLevel, lowest, highest, shape.LandBase), -1, 1);
+        return result;
     }
 
     /// <summary>

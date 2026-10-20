@@ -89,6 +89,8 @@ public class ProjectService
         Project.Generator?.Normalize();
 
         // Dibujo en curso: limpio, y si no había (proyectos de antes), el del último mapa generado.
+        // El historial de "Deshacer" era del proyecto anterior: se descarta.
+        _sketchUndo.Clear();
         Project.SketchDraft = Sketches.Clean(Project.SketchDraft);
         if (Project.SketchDraft.Count == 0 && Project.Generator is { } settings)
             Project.SketchDraft = Sketches.Copy(settings.Sketch);
@@ -526,13 +528,20 @@ public class ProjectService
     private const double MinIslandArea = 400;  // unos 20 x 20 px
     private const double MinRangeLength = 40;
 
-    // Orden de los trazos de esta sesión, para que "Deshacer" quite el último sin importar su
-    // tipo: true = zona (agua, cordillera, bioma), false = isla. No se guarda: al recargar,
+    // Distancia en píxeles del mapa a la que un clic de la goma "toca" una cordillera (una línea
+    // no tiene adentro: hay que darle un margen para poder acertarle).
+    private const double EraserReach = 15;
+
+    // "Deshacer": cada trazo agregado o borrado con la goma deja en la pila cómo revertirse.
+    // Deshacer = sacar la última acción de la pila y ejecutarla. No se guarda: al recargar,
     // "Deshacer" quita primero las zonas y después las islas.
-    private readonly Stack<bool> _sketchHistory = new();
+    private readonly Stack<Action> _sketchUndo = new();
 
     /// <summary>Cantidad total de trazos del dibujo en curso (islas y zonas).</summary>
     public int SketchStrokeCount => Project.SketchDraft.Count + Project.SketchFeatureDraft.Count;
+
+    /// <summary>True si "Deshacer" tiene algo para revertir.</summary>
+    public bool CanUndoSketch => _sketchUndo.Count > 0 || SketchStrokeCount > 0;
 
     /// <summary>
     /// Agrega un trazo al dibujo en curso con la herramienta elegida. Llega como lista plana de
@@ -555,10 +564,12 @@ public class ProjectService
         if (tool == SketchTool.Land)
         {
             Project.SketchDraft.Add(points);
+            // Remove compara por referencia: quita justo este arreglo, aunque haya otro igual.
+            _sketchUndo.Push(() => Project.SketchDraft.Remove(points));
         }
         else
         {
-            Project.SketchFeatureDraft.Add(new SketchFeature
+            var feature = new SketchFeature
             {
                 Kind = tool switch
                 {
@@ -568,24 +579,80 @@ public class ProjectService
                 },
                 Biome = tool == SketchTool.Biome ? biome : null,
                 Points = points
-            });
+            };
+            Project.SketchFeatureDraft.Add(feature);
+            _sketchUndo.Push(() => Project.SketchFeatureDraft.Remove(feature));
         }
 
-        _sketchHistory.Push(tool != SketchTool.Land);
         SketchEdited();
         return true;
     }
 
+    /// <summary>
+    /// Goma: borra el trazo que está bajo el punto (coordenadas normalizadas). Se prueba en el
+    /// orden inverso al del dibujo en pantalla, así se borra el que se ve encima: primero las
+    /// zonas (de la última a la primera) y después las islas. Devuelve false si no tocó ninguno.
+    /// </summary>
+    public bool EraseSketchAt(double nx, double ny)
+    {
+        var w = MapGenerator.Width;
+        var h = MapGenerator.Height;
+        var (x, y) = (nx * w, ny * h);
+
+        var features = Project.SketchFeatureDraft;
+        for (var i = features.Count - 1; i >= 0; i--)
+        {
+            var shape = Sketches.ToPixels(features[i].Points, w, h);
+            var hit = features[i].Kind == SketchFeatureKind.Mountains
+                ? Sketches.DistanceToPolyline(shape, x, y) <= EraserReach
+                : Sketches.Contains(shape, x, y);
+            if (!hit) continue;
+
+            var feature = features[i];
+            var index = i;
+            features.RemoveAt(index);
+            // Al deshacer vuelve a su lugar en la lista (importa: si dos zonas se pisan, gana la última).
+            _sketchUndo.Push(() => Project.SketchFeatureDraft.Insert(Math.Min(index, Project.SketchFeatureDraft.Count), feature));
+            SketchEdited();
+            return true;
+        }
+
+        var islands = Project.SketchDraft;
+        for (var i = islands.Count - 1; i >= 0; i--)
+        {
+            if (!Sketches.Contains(Sketches.ToPixels(islands[i], w, h), x, y)) continue;
+
+            var island = islands[i];
+            var index = i;
+            islands.RemoveAt(index);
+            _sketchUndo.Push(() => Project.SketchDraft.Insert(Math.Min(index, Project.SketchDraft.Count), island));
+            SketchEdited();
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Revierte la última acción del dibujo: un trazo nuevo se quita, uno borrado vuelve.</summary>
     public void UndoSketchStroke()
     {
-        if (SketchStrokeCount == 0) return;
-
-        // Sin historial (tras recargar), primero las zonas y después las islas.
-        var feature = _sketchHistory.Count > 0 ? _sketchHistory.Pop() : Project.SketchFeatureDraft.Count > 0;
-        if (feature && Project.SketchFeatureDraft.Count > 0)
+        if (_sketchUndo.Count > 0)
+        {
+            _sketchUndo.Pop()();
+        }
+        else if (Project.SketchFeatureDraft.Count > 0)
+        {
+            // Sin historial (tras recargar), primero las zonas y después las islas.
             Project.SketchFeatureDraft.RemoveAt(Project.SketchFeatureDraft.Count - 1);
+        }
         else if (Project.SketchDraft.Count > 0)
+        {
             Project.SketchDraft.RemoveAt(Project.SketchDraft.Count - 1);
+        }
+        else
+        {
+            return;
+        }
 
         SketchEdited();
     }
@@ -594,7 +661,7 @@ public class ProjectService
     {
         Project.SketchDraft.Clear();
         Project.SketchFeatureDraft.Clear();
-        _sketchHistory.Clear();
+        _sketchUndo.Clear();
         SketchEdited();
     }
 

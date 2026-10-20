@@ -38,38 +38,42 @@
         </div>
     }
 
-    @if (_settings.Template == ReliefTemplate.Sketch)
+    @* Con Dibujo, la tierra sale de las islas dibujadas, no de un porcentaje. Con las otras
+       plantillas, lo dibujado son retoques encima del relieve (agregar islas, borrar tierra...). *@
+    @if (!IsSketch)
     {
-        @* Dibujo: la tierra sale de las islas dibujadas, no de un porcentaje. *@
-        <div class="sketch-tools">
-            <p class="hint">
-                @SketchSummary
-            </p>
-            <div class="btn-row">
-                <button class="btn" disabled="@_busy" @onclick="OnStartSketch">Dibujar en el mapa</button>
-            </div>
+        <label class="field">
+            <span>Tierra: @LandPercent %</span>
+            <input type="range" min="5" max="70" step="5"
+                   @bind="LandPercent" @bind:event="oninput" @onchange="UpdateSketchPreviewAsync" />
+        </label>
+    }
 
+    <div class="sketch-tools">
+        @if (!IsSketch)
+        {
+            <h3>Retoques</h3>
+        }
+        <p class="hint">@SketchSummary</p>
+        <div class="btn-row">
+            <button class="btn" disabled="@_busy" @onclick="OnStartSketch">@(IsSketch ? "Dibujar en el mapa" : "Retocar en el mapa")</button>
+        </div>
+
+        @if (IsSketch || HasDrawing)
+        {
             <label class="field">
                 <span>Fidelidad al trazo: @FidelityPercent %</span>
                 <input type="range" min="0" max="100" step="5"
                        @bind="FidelityPercent" @bind:event="oninput" @onchange="UpdateSketchPreviewAsync" />
             </label>
             <p class="hint">Al 100 % la costa sigue tu línea; al 10 % tu dibujo es apenas una sugerencia.</p>
+        }
 
-            @if (_sketchPreview is not null)
-            {
-                <img class="sketch-preview" src="@_sketchPreview" alt="Vista previa del relieve con el dibujo" />
-            }
-        </div>
-    }
-    else
-    {
-        <label class="field">
-            <span>Tierra: @LandPercent %</span>
-            <input type="range" min="5" max="70" step="5"
-                   @bind="LandPercent" @bind:event="oninput" />
-        </label>
-    }
+        @if (_sketchPreview is not null)
+        {
+            <img class="sketch-preview" src="@_sketchPreview" alt="Vista previa del relieve con lo dibujado" />
+        }
+    </div>
 
     <label class="field">
         <span>Detalle</span>
@@ -186,21 +190,27 @@
     private string? _sketchPreview;
     private IJSObjectReference? _preview;
 
-    /// <summary>Resumen del dibujo en curso: "2 islas, 1 lago o bahía, 1 cordillera y 2 zonas de bioma".</summary>
+    private bool IsSketch => _settings.Template == ReliefTemplate.Sketch;
+
+    private bool HasDrawing => Store.Project.SketchDraft.Count > 0 || Store.Project.SketchFeatureDraft.Count > 0;
+
+    /// <summary>Resumen de lo dibujado: "2 islas, 1 zona de agua, 1 cordillera y 2 zonas de bioma".</summary>
     private string SketchSummary
     {
         get
         {
             var islands = Store.Project.SketchDraft.Count;
-            if (islands == 0) return "Todavía no dibujaste ninguna isla.";
+            if (IsSketch && islands == 0) return "Todavía no dibujaste ninguna isla.";
+            if (!HasDrawing) return "Dibujá encima del mapa para agregar islas, borrar tierra con agua o sumar cordilleras y biomas.";
 
             string Count(int n, string one, string many) => n == 1 ? $"1 {one}" : $"{n} {many}";
             var features = Store.Project.SketchFeatureDraft;
-            var parts = new List<string> { Count(islands, "isla", "islas") };
+            var parts = new List<string>();
             var water = features.Count(f => f.Kind == SketchFeatureKind.Water);
             var ranges = features.Count(f => f.Kind == SketchFeatureKind.Mountains);
             var zones = features.Count(f => f.Kind == SketchFeatureKind.Biome);
-            if (water > 0) parts.Add(Count(water, "lago o bahía", "lagos o bahías"));
+            if (islands > 0) parts.Add(Count(islands, "isla", "islas"));
+            if (water > 0) parts.Add(Count(water, "zona de agua", "zonas de agua"));
             if (ranges > 0) parts.Add(Count(ranges, "cordillera", "cordilleras"));
             if (zones > 0) parts.Add(Count(zones, "zona de bioma", "zonas de bioma"));
 
@@ -216,21 +226,21 @@
     }
 
     /// <summary>
-    /// Miniatura del relieve con el dibujo actual y la fidelidad elegida, para ver el efecto
-    /// antes de generar. Se rehace al terminar un trazo o al soltar el deslizador (no mientras
-    /// se arrastra: tarda una fracción de segundo y trabaría el deslizador).
+    /// Miniatura del relieve con lo dibujado y la fidelidad elegida, para ver el efecto antes
+    /// de generar. Se rehace al terminar un trazo, al soltar un deslizador (no mientras se
+    /// arrastra: tarda una fracción de segundo y lo trabaría) o al cambiar plantilla o semilla.
     /// </summary>
     private async Task UpdateSketchPreviewAsync()
     {
-        if (_settings.Template != ReliefTemplate.Sketch || Store.Project.SketchDraft.Count == 0)
+        if (IsSketch ? Store.Project.SketchDraft.Count == 0 : !HasDrawing)
         {
             _sketchPreview = null;
             return;
         }
 
         _preview ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/preview.js");
-        var pixels = ReliefTemplates.Preview(ReliefTemplate.Sketch, _settings.ContinentSeed, 96, 60,
-            Store.Project.SketchDraft, _settings.SketchFidelity, Store.Project.SketchFeatureDraft);
+        var pixels = ReliefTemplates.Preview(_settings.Template, _settings.ContinentSeed, 96, 60,
+            Store.Project.SketchDraft, _settings.SketchFidelity, Store.Project.SketchFeatureDraft, _settings.LandRatio);
         _sketchPreview = await _preview.InvokeAsync<string>("toDataUrl", 96, 60, pixels);
     }
 
@@ -282,7 +292,7 @@
     private SeedRow[] Seeds => new SeedRow[]
     {
         new("continente", "Continente", "Forma de la tierra y relieve",
-            () => _settings.ContinentSeed, v => _settings.ContinentSeed = v),
+            () => _settings.ContinentSeed, v => { _settings.ContinentSeed = v; OnSketchChanged(); }),
         new("clima", "Clima", "Latitud y manchas de humedad",
             () => _settings.ClimateSeed, v => _settings.ClimateSeed = v),
         new("rios", "Ríos", "Variación de la lluvia que alimenta los ríos",
@@ -350,18 +360,17 @@
     {
         if (_busy) return;
 
-        // Con la plantilla Dibujo, el dibujo en curso pasa a ser parte de los parámetros: así la
-        // misma configuración rearma siempre el mismo mundo aunque después se siga dibujando.
-        if (settings.Template == ReliefTemplate.Sketch)
+        // El dibujo en curso (con Dibujo, la costa; con otra plantilla, los retoques) pasa a ser
+        // parte de los parámetros: así la misma configuración rearma siempre el mismo mundo
+        // aunque después se siga dibujando.
+        if (settings.Template == ReliefTemplate.Sketch && Store.Project.SketchDraft.Count == 0)
         {
-            if (Store.Project.SketchDraft.Count == 0)
-            {
-                _status = "Dibujá al menos una isla con \"Dibujar en el mapa\".";
-                return;
-            }
-            settings.Sketch = Sketches.Copy(Store.Project.SketchDraft);
-            settings.SketchFeatures = Sketches.CopyFeatures(Store.Project.SketchFeatureDraft);
+            _status = "Dibujá al menos una isla con \"Dibujar en el mapa\".";
+            return;
         }
+        settings.Sketch = Sketches.Copy(Store.Project.SketchDraft);
+        settings.SketchFeatures = Sketches.CopyFeatures(Store.Project.SketchFeatureDraft);
+        settings.Retouches = true;
 
         // Si la imagen actual vino de un archivo, se pregunta antes de reemplazarla.
         if (Store.ImageDataUrl is not null && Store.Project.Generator is null &&

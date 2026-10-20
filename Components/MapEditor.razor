@@ -141,8 +141,8 @@
                 }
 
                 <div class="btn-row">
-                    <button class="btn small" disabled="@(Store.SketchStrokeCount == 0)"
-                            @onclick="Store.UndoSketchStroke">Deshacer trazo</button>
+                    <button class="btn small" disabled="@(!Store.CanUndoSketch)"
+                            @onclick="Store.UndoSketchStroke">Deshacer</button>
                     <button class="btn small" disabled="@(Store.SketchStrokeCount == 0)"
                             @onclick="ClearSketchAsync">Borrar todo</button>
                     <button class="btn small" @onclick="() => _mode = Mode.Navigate">Terminar</button>
@@ -626,6 +626,15 @@
         StateHasChanged();
     });
 
+    /// <summary>mapview.js avisa de un clic con la goma: coordenadas normalizadas.</summary>
+    [JSInvokable]
+    public Task OnSketchErase(double x, double y) => InvokeAsync(() =>
+    {
+        if (_mode != Mode.Sketch || _sketchTool != SketchTool.Eraser) return;
+        _message = Store.EraseSketchAt(x, y) ? "" : "Ahí no hay ningún trazo.";
+        StateHasChanged();
+    });
+
     // Isla del dibujo como path de SVG, en las coordenadas del viewBox (el tamaño del mapa).
     private static string IslandPath(double[] island, bool closed = true)
     {
@@ -641,16 +650,18 @@
 
     private static readonly (SketchTool Tool, string Name)[] SketchTools =
     {
-        (SketchTool.Land, "Tierra"), (SketchTool.Water, "Agua"), (SketchTool.Mountains, "Montañas"), (SketchTool.Biome, "Bioma")
+        (SketchTool.Land, "Tierra"), (SketchTool.Water, "Agua"), (SketchTool.Mountains, "Montañas"),
+        (SketchTool.Biome, "Bioma"), (SketchTool.Eraser, "Goma")
     };
 
     // Qué hace el próximo trazo, en la barra de dibujo.
     private string SketchToolHint => _sketchTool switch
     {
-        SketchTool.Water => "arrastrá un contorno para un lago o una bahía.",
+        SketchTool.Water => "arrastrá un contorno para un lago, una bahía o para borrar tierra.",
         SketchTool.Mountains => "arrastrá una línea para una cordillera.",
         SketchTool.Biome => $"arrastrá un contorno: esa zona será {BiomeNames.Of(_sketchBiome).ToLowerInvariant()}.",
-        _ => "arrastrá un contorno para una isla."
+        SketchTool.Eraser => "hacé clic sobre un trazo para borrarlo.",
+        _ => "arrastrá un contorno para una isla o para sumar tierra."
     };
 
     // El panel de celdas cambió el mapa: no hay nada que hacer acá, pero recibir el aviso hace
@@ -931,7 +942,12 @@
         Mode.AddPin => "adding",
         Mode.Inspect => "inspecting",
         // Con la herramienta Montañas el trazo es una línea abierta: mapview.js no lo cierra.
-        Mode.Sketch => _sketchTool == SketchTool.Mountains ? "sketching sketch-open" : "sketching",
+        Mode.Sketch => _sketchTool switch
+        {
+            SketchTool.Mountains => "sketching sketch-open",   // el trazo en vivo no se cierra
+            SketchTool.Eraser => "sketching sketch-eraser",    // clic en vez de trazo
+            _ => "sketching"
+        },
         _ => ""
     };
 

@@ -6,7 +6,8 @@ public enum SketchTool
     Land,       // contorno cerrado: una isla
     Water,      // contorno cerrado: lago, bahía o mar interior
     Mountains,  // línea abierta: una cordillera
-    Biome       // contorno cerrado: una zona con el bioma elegido
+    Biome,      // contorno cerrado: una zona con el bioma elegido
+    Eraser      // clic sobre un trazo: lo borra
 }
 
 /// <summary>Tipo de una zona dibujada que no es tierra (la tierra va en la lista de islas).</summary>

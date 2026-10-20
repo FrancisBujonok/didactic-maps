@@ -26,7 +26,7 @@ public static class MapGenerator
             ReliefStage.FindWater(world); // la costa cambió: se recalculan mar, lagos y distancias
 
         ClimateStage.Apply(world, settings.ClimateSeed);
-        var drawn = settings.Template == ReliefTemplate.Sketch ? settings.SketchFeatures : new List<SketchFeature>();
+        var drawn = settings.SketchFeatures; // zonas dibujadas (con Dibujo o como retoques de otra plantilla)
         SketchStage.ApplyClimate(world, drawn);   // biomas dibujados: su clima, antes de los ríos
         RiverStage.Apply(world, settings.RiverSeed);
         BiomeStage.Apply(world, settings.BiomeSeed);
@@ -64,12 +64,12 @@ public static class MapGenerator
         before.ContinentSeed != after.ContinentSeed || before.CellSize != after.CellSize;
 
     /// <summary>
-    /// True si cambia dónde está la tierra aunque las celdas sean las mismas (otra plantilla u
-    /// otro porcentaje de tierra). Las ediciones siguen valiendo, pero los lugares generados
-    /// pueden quedar en el mar.
+    /// True si cambia dónde está la tierra aunque las celdas sean las mismas (otra plantilla, otro
+    /// porcentaje de tierra u otros dibujos). Las ediciones siguen valiendo, pero los lugares
+    /// generados pueden quedar en el mar. La fidelidad solo cuenta si hay algo dibujado.
     /// </summary>
     public static bool ChangesCoast(GeneratorSettings before, GeneratorSettings after) =>
         ChangesMesh(before, after) || before.Template != after.Template || before.LandRatio != after.LandRatio ||
-        (after.Template == ReliefTemplate.Sketch && (!Sketches.SameFeatures(before.SketchFeatures, after.SketchFeatures) ||
-         before.SketchFidelity != after.SketchFidelity || !Sketches.SameAs(before.Sketch, after.Sketch)));
+        !Sketches.SameAs(before.Sketch, after.Sketch) || !Sketches.SameFeatures(before.SketchFeatures, after.SketchFeatures) ||
+        (before.SketchFidelity != after.SketchFidelity && (after.Sketch.Count > 0 || after.SketchFeatures.Count > 0));
 }
