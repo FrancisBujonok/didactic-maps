@@ -56,7 +56,7 @@ public static class SvgMapRenderer
     /// "Celdas" deja las costas sobre los lados de las celdas y marca el borde de cada una.
     /// coast: detalle de la costa en el estilo Pintado (ver CoastWarp).
     /// </summary>
-    public static string Render(World world, MapStyle style, CoastDetail coast = CoastDetail.Smooth)
+    public static string Render(World world, MapStyle style, CoastDetail coast = CoastDetail.Smooth, LandDetail land = LandDetail.Plain)
     {
         var mesh = world.Mesh;
         var painted = style == MapStyle.Painted;
@@ -86,6 +86,8 @@ public static class SvgMapRenderer
             svg.Append(CultureInfo.InvariantCulture,
                 $"<filter id=\"suave\"><feGaussianBlur stdDeviation=\"{mesh.Spacing * 0.35:0.#}\"/></filter>");
         }
+        if (painted && land == LandDetail.Atlas)
+            LandDecor.AppendDefs(svg); // dibujos de montañas, colinas y árboles, para reutilizar con <use>
         svg.Append("</defs>");
 
         // ---- 1. Mar
@@ -108,6 +110,10 @@ public static class SvgMapRenderer
         svg.Append($"<path fill=\"{LakeWater}\" fill-rule=\"evenodd\" d=\"{lakePath}\"/>");
 
         // ---- 3. Tierra
+        // Con sombreado, cada color se mezcla con luz o sombra; las mezclas se guardan para no
+        // repetir la cuenta en cada celda del mismo color y escalón.
+        var shaded = painted && land != LandDetail.Plain;
+        var shadedColors = new Dictionary<(string, int), string>();
         // Celdas agrupadas por color: un solo path por color hace el archivo mucho más liviano.
         var groups = new Dictionary<string, StringBuilder>();
         for (var i = 0; i < mesh.Count; i++)
@@ -115,6 +121,15 @@ public static class SvgMapRenderer
             var polygon = mesh.Polygons[i];
             var color = painted ? CellColor(world, i, warp is null ? 1 : 2) : world.IsLand(i) ? LandColor(world, i) : null;
             if (polygon is null || color is null) continue;
+
+            // Sombreado de relieve (ver LandDecor): va en el color de cada celda de tierra.
+            if (shaded && world.IsLand(i))
+            {
+                var key = (color, LandDecor.ShadeLevel(world, i));
+                if (!shadedColors.TryGetValue(key, out var shadedColor))
+                    shadedColors[key] = shadedColor = LandDecor.Shade(color, key.Item2);
+                color = shadedColor;
+            }
 
             if (!groups.TryGetValue(color, out var path))
                 groups[color] = path = new StringBuilder();
@@ -134,6 +149,10 @@ public static class SvgMapRenderer
             svg.Append($"<path fill=\"{color}\" stroke=\"{stroke}\" stroke-width=\"0.8\" stroke-linejoin=\"round\" d=\"{path}\"/>");
         }
         svg.Append("</g></g>");
+
+        // ---- 3b. Símbolos de atlas (ver LandDecor): montañas, colinas y bosques.
+        if (painted && land == LandDetail.Atlas)
+            LandDecor.AppendSymbols(svg, world);
 
         // ---- 4. Líneas
         AppendRivers(svg, world, warp);

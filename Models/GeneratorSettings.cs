@@ -43,6 +43,16 @@ public enum CoastDetail
 }
 
 /// <summary>
+/// Cuánto detalle tiene la tierra en el estilo Pintado (ver LandDecor). Tampoco cambia el mundo.
+/// </summary>
+public enum LandDetail
+{
+    Plain,   // lisa: color por bioma y altura (como antes de existir esta opción)
+    Shaded,  // con sombreado de relieve
+    Atlas    // sombreado y símbolos de atlas: montañas, colinas y bosques
+}
+
+/// <summary>
 /// Parámetros del generador de mapas. Se guardan con el proyecto: con los mismos valores
 /// se obtiene exactamente el mismo mapa.
 /// </summary>
@@ -102,6 +112,17 @@ public class GeneratorSettings
         (CoastDetail.Smooth, "Suaves"), (CoastDetail.Irregular, "Irregulares"), (CoastDetail.Rugged, "Muy recortadas")
     };
 
+    /// <summary>
+    /// Detalle de la tierra. Como Coast: los mapas guardados antes quedan lisos, como se veían;
+    /// los nuevos (CreateRandom) nacen con símbolos de atlas.
+    /// </summary>
+    public LandDetail Land { get; set; } = LandDetail.Plain;
+
+    public static readonly (LandDetail Value, string Name)[] LandLevels =
+    {
+        (LandDetail.Plain, "Lisa"), (LandDetail.Shaded, "Con sombreado"), (LandDetail.Atlas, "Atlas (sombreado y símbolos)")
+    };
+
     // ---- Poblados ("Poblar mapa"). No cambian la imagen: se aplican sobre el mundo ya generado.
 
     /// <summary>Dónde caen las ciudades, aldeas y lugares, y cómo se llaman.</summary>
@@ -132,7 +153,8 @@ public class GeneratorSettings
         RiverSeed = NewSeed(),
         BiomeSeed = NewSeed(),
         SettlementSeed = NewSeed(),
-        Coast = CoastDetail.Irregular
+        Coast = CoastDetail.Irregular,
+        Land = LandDetail.Atlas
     };
 
     /// <summary>
@@ -170,6 +192,8 @@ public class GeneratorSettings
             Style = MapStyle.Painted;
         if (!Enum.IsDefined(Coast))
             Coast = CoastDetail.Smooth;
+        if (!Enum.IsDefined(Land))
+            Land = LandDetail.Plain;
 
         // Un mapa de antes de los retoques, hecho con otra plantilla, puede guardar un dibujo
         // viejo que nunca se usó: se descarta para que el mundo se rearme igual que su imagen.

@@ -48,7 +48,7 @@ public static class MapGenerator
 
     /// <summary>Dibuja un mundo ya armado y lo devuelve como data URL.</summary>
     public static string Draw(World world, GeneratorSettings settings) =>
-        ToDataUrl(SvgMapRenderer.Render(world, settings.Style, settings.Coast));
+        ToDataUrl(SvgMapRenderer.Render(world, settings.Style, settings.Coast, settings.Land));
 
     /// <summary>
     /// Convierte el texto de un SVG en un data URL ("data:image/svg+xml;base64,..."), que se
