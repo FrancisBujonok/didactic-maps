@@ -25,6 +25,7 @@ public static class SvgMapRenderer
     private const string ShallowSea = "#C6DBE1";
     private const string LakeWater = "#B9D3DB";
     private const string RiverWater = "#4E7C9B";
+    private const string WaterLine = "#86A9B8"; // líneas de agua junto a la costa
     internal const string Ink = "#23201A";
     private const string Shadow = "#3B3226"; // hacia este color se oscurece la tierra alta
 
@@ -53,14 +54,16 @@ public static class SvgMapRenderer
     /// <summary>
     /// Dibuja el mundo. El estilo "Pintado" suaviza costas y difumina la tierra; el estilo
     /// "Celdas" deja las costas sobre los lados de las celdas y marca el borde de cada una.
+    /// coast: detalle de la costa en el estilo Pintado (ver CoastWarp).
     /// </summary>
-    public static string Render(World world, MapStyle style)
+    public static string Render(World world, MapStyle style, CoastDetail coast = CoastDetail.Smooth)
     {
         var mesh = world.Mesh;
         var painted = style == MapStyle.Painted;
         var svg = new StringBuilder(1 << 20);
 
-        var (oceanShores, lakeShores) = TraceShores(world, painted ? SmoothPasses : 0);
+        var warp = painted ? CoastWarp.For(coast, mesh.Spacing) : null;
+        var (oceanShores, lakeShores) = TraceShores(world, painted ? SmoothPasses : 0, warp);
         var coastPath = ClosedPath(oceanShores);
         var lakePath = ClosedPath(lakeShores);
 
@@ -71,6 +74,9 @@ public static class SvgMapRenderer
         // dentro de otro es un agujero, así los lagos quedan afuera del molde.
         svg.Append("<defs>");
         svg.Append($"<clipPath id=\"tierra\"><path clip-rule=\"evenodd\" d=\"{coastPath}{lakePath}\"/></clipPath>");
+        // La costa se escribe una sola vez acá y los trazos que la siguen la reutilizan con <use>:
+        // copiar el contorno entero en cada trazo haría el archivo mucho más pesado.
+        svg.Append($"<path id=\"costa\" d=\"{coastPath}\"/>");
 
         // El desenfoque borra los escalones hexagonales entre biomas y alturas: la tierra queda
         // con transiciones suaves, como pintada a mano. La costa no se desenfoca porque se
@@ -86,8 +92,17 @@ public static class SvgMapRenderer
         svg.Append($"<rect width=\"100%\" height=\"100%\" fill=\"{DeepSea}\"/>");
         // Una línea ancha centrada en la costa: la mitad que cae sobre tierra queda tapada,
         // la otra mitad es una franja de agua clara que sigue la forma de la costa.
-        AppendStroke(svg, coastPath, MidSea, mesh.Spacing * 8);
-        AppendStroke(svg, coastPath, ShallowSea, mesh.Spacing * 3);
+        UseStroke(svg, "costa", MidSea, mesh.Spacing * 8);
+        if (warp is not null)
+        {
+            // Líneas de agua, como en los atlas antiguos: líneas finas paralelas a la costa. Con
+            // trazos anchos de la costa, cada una más lejos, se alisan solas mar adentro.
+            AppendWaterLine(svg, mesh.Spacing * 3.0, MidSea);
+            AppendWaterLine(svg, mesh.Spacing * 2.1, MidSea);
+        }
+        UseStroke(svg, "costa", ShallowSea, mesh.Spacing * 3);
+        if (warp is not null)
+            AppendWaterLine(svg, mesh.Spacing * 0.9, ShallowSea);
 
         // ---- 2. Lagos
         svg.Append($"<path fill=\"{LakeWater}\" fill-rule=\"evenodd\" d=\"{lakePath}\"/>");
@@ -98,7 +113,7 @@ public static class SvgMapRenderer
         for (var i = 0; i < mesh.Count; i++)
         {
             var polygon = mesh.Polygons[i];
-            var color = painted ? CellColor(world, i) : world.IsLand(i) ? LandColor(world, i) : null;
+            var color = painted ? CellColor(world, i, warp is null ? 1 : 2) : world.IsLand(i) ? LandColor(world, i) : null;
             if (polygon is null || color is null) continue;
 
             if (!groups.TryGetValue(color, out var path))
@@ -121,9 +136,9 @@ public static class SvgMapRenderer
         svg.Append("</g></g>");
 
         // ---- 4. Líneas
-        AppendRivers(svg, world);
+        AppendRivers(svg, world, warp);
         AppendStroke(svg, lakePath, RiverWater, 1);
-        AppendStroke(svg, coastPath, Ink, 1.4);
+        UseStroke(svg, "costa", Ink, 1.4);
 
         svg.Append("</svg>");
         return svg.ToString();
@@ -134,14 +149,31 @@ public static class SvgMapRenderer
     /// Las celdas de agua que tocan tierra se pintan como su vecina de tierra: el contorno suave
     /// a veces pasa un poco por encima de ellas, y así no queda un hueco entre la costa y la tierra.
     /// </summary>
-    private static string? CellColor(World world, int i)
+    private static string? CellColor(World world, int i, int reach)
     {
-        if (world.Water[i])
+        if (!world.Water[i]) return LandColor(world, i);
+
+        var land = NearbyLand(world, i, reach);
+        return land >= 0 ? LandColor(world, land) : null;
+    }
+
+    /// <summary>
+    /// Una celda de tierra a "reach" pasos o menos (vecina, o vecina de una vecina), o -1. Con
+    /// costas irregulares la costa dibujada se aleja hasta casi dos celdas de la de las celdas:
+    /// el color de tierra tiene que llegar hasta ahí para que no queden huecos sin pintar.
+    /// </summary>
+    private static int NearbyLand(World world, int i, int reach)
+    {
+        var neighbors = world.Mesh.Neighbors[i];
+        var land = neighbors.FirstOrDefault(world.IsLand, -1);
+        if (land >= 0 || reach < 2) return land;
+
+        foreach (var n in neighbors)
         {
-            var land = world.Mesh.Neighbors[i].FirstOrDefault(world.IsLand, -1);
-            return land >= 0 ? LandColor(world, land) : null;
+            land = world.Mesh.Neighbors[n].FirstOrDefault(world.IsLand, -1);
+            if (land >= 0) return land;
         }
-        return LandColor(world, i);
+        return -1;
     }
 
     // Sombreado por altura en 5 escalones: la tierra alta se ve más oscura y se lee el relieve.
@@ -161,9 +193,16 @@ public static class SvgMapRenderer
     /// Cada lado va de un vértice a otro, siempre con la tierra del mismo lado. En cada vértice
     /// se juntan 3 celdas, así que por cada vértice de la costa sale exactamente un lado:
     /// buscando el lado que sale de donde terminó el anterior se recorre el contorno entero.
+    ///
+    /// Con warp (costas irregulares), el contorno suavizado se deforma después. Antes se le da
+    /// una pasada más de suavizado: duplica los puntos, y así la deformación tiene dónde dibujar
+    /// las ondas más chicas.
     /// </summary>
-    internal static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(World world, int passes)
+    internal static (List<List<(double X, double Y)>> Ocean, List<List<(double X, double Y)>> Lake) TraceShores(
+        World world, int passes, CoastWarp? warp = null)
     {
+        if (warp is not null) passes++;
+
         var mesh = world.Mesh;
         var sides = new Dictionary<(long, long), ((double X, double Y) To, bool Lake)>();
 
@@ -196,7 +235,10 @@ public static class SvgMapRenderer
                 current = next.To;
             }
 
-            (first.Lake ? lake : ocean).Add(SmoothClosed(loop, passes));
+            // Con deformación, primero se aplana el zigzag de los vértices de las celdas (Relax)
+            // y recién después se densifica con Chaikin y se deforma.
+            var shore = SmoothClosed(warp is null ? loop : Relax(loop, RelaxRounds), passes);
+            (first.Lake ? lake : ocean).Add(warp is null ? shore : warp.Apply(shore));
         }
 
         return (ocean, lake);
@@ -227,6 +269,40 @@ public static class SvgMapRenderer
         return points;
     }
 
+    // Rondas de Relax antes de deformar la costa, sobre los vértices de las celdas (uno cada
+    // 10 px, más o menos): con 4 rondas se va el zigzag de las celdas y queda la forma grande.
+    private const int RelaxRounds = 4;
+
+    /// <summary>
+    /// Suavizado de Taubin para un contorno cerrado. Chaikin redondea las esquinas, pero deja
+    /// las ondulaciones regulares del tamaño de una celda (un festón): se notan debajo del
+    /// detalle de las costas irregulares. Promediar cada punto con sus vecinos las borra, pero
+    /// también achica el contorno (una isla chica desaparecería). Taubin alterna dos pasos: uno
+    /// que promedia (lambda) y otro que empuja un poco hacia afuera (mu, negativo), así las ondas
+    /// cortas se van y el tamaño se conserva.
+    /// </summary>
+    private static List<(double X, double Y)> Relax(List<(double X, double Y)> points, int rounds)
+    {
+        const double lambda = 0.5, mu = -0.53;
+        if (points.Count < 8) return points;
+
+        var current = points.ToArray();
+        var next = new (double X, double Y)[current.Length];
+        for (var round = 0; round < rounds * 2; round++)
+        {
+            var factor = round % 2 == 0 ? lambda : mu;
+            for (var i = 0; i < current.Length; i++)
+            {
+                var prev = current[(i - 1 + current.Length) % current.Length];
+                var after = current[(i + 1) % current.Length];
+                var p = current[i];
+                next[i] = (p.X + factor * ((prev.X + after.X) / 2 - p.X), p.Y + factor * ((prev.Y + after.Y) / 2 - p.Y));
+            }
+            (current, next) = (next, current);
+        }
+        return current.ToList();
+    }
+
     /// <summary>Chaikin para una línea abierta: igual, pero conserva el primer y el último punto.</summary>
     private static List<(double X, double Y)> SmoothOpen(List<(double X, double Y)> points)
     {
@@ -254,7 +330,7 @@ public static class SvgMapRenderer
     /// principal. El suavizado de Chaikin nunca mueve esos puntos medios, así que la unión
     /// queda exacta aunque las dos líneas estén suavizadas.
     /// </summary>
-    private static void AppendRivers(StringBuilder svg, World world)
+    private static void AppendRivers(StringBuilder svg, World world, CoastWarp? warp)
     {
         var mesh = world.Mesh;
         var widths = new[] { 1.0, 1.8, 2.8 };
@@ -290,7 +366,7 @@ public static class SvgMapRenderer
                 points.Add(Shore(start, below));
                 points.Add(Center(below));
                 classes.Add(WidthClass(start));
-                if (drawn[below]) { Flush(points, classes, paths); continue; }
+                if (drawn[below]) { Flush(points, classes, paths, warp); continue; }
                 cell = below;
             }
             else
@@ -329,7 +405,7 @@ public static class SvgMapRenderer
                 cell = below;
             }
 
-            Flush(points, classes, paths);
+            Flush(points, classes, paths, warp);
         }
 
         for (var s = 0; s < widths.Length; s++)
@@ -340,8 +416,11 @@ public static class SvgMapRenderer
         }
     }
 
-    /// <summary>Corta el río en tramos del mismo grosor, suaviza cada uno y lo agrega a su path.</summary>
-    private static void Flush(List<(double X, double Y)> points, List<int> classes, StringBuilder[] paths)
+    /// <summary>
+    /// Corta el río en tramos del mismo grosor, suaviza cada uno y lo agrega a su path. Con warp,
+    /// el río se deforma igual que la costa, así su desembocadura sigue cayendo sobre ella.
+    /// </summary>
+    private static void Flush(List<(double X, double Y)> points, List<int> classes, StringBuilder[] paths, CoastWarp? warp)
     {
         var from = 0;
         for (var k = 1; k <= classes.Count; k++)
@@ -350,7 +429,7 @@ public static class SvgMapRenderer
 
             // Tramo de points[from] a points[k], todo con el mismo grosor.
             var stretch = SmoothOpen(points.GetRange(from, k - from + 1));
-            AppendOpen(paths[classes[from]], stretch);
+            AppendOpen(paths[classes[from]], warp is null ? stretch : warp.Apply(stretch));
             from = k;
         }
     }
@@ -375,6 +454,22 @@ public static class SvgMapRenderer
         d.Append('M').Append(F(line[0].X)).Append(' ').Append(F(line[0].Y));
         for (var k = 1; k < line.Count; k++)
             d.Append('L').Append(F(line[k].X)).Append(' ').Append(F(line[k].Y));
+    }
+
+    /// <summary>Trazo de un path ya definido en defs (por su id), sin repetir sus puntos.</summary>
+    private static void UseStroke(StringBuilder svg, string id, string color, double width) =>
+        svg.Append(CultureInfo.InvariantCulture,
+            $"<use href=\"#{id}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width:0.#}\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>");
+
+    /// <summary>
+    /// Una línea de agua a "distance" de la costa: un trazo de la costa un poco más ancho que el
+    /// doble de la distancia, en el color de la línea, y encima otro apenas más angosto en el
+    /// color del agua de esa franja. Lo que queda a la vista es un anillo fino.
+    /// </summary>
+    private static void AppendWaterLine(StringBuilder svg, double distance, string water)
+    {
+        UseStroke(svg, "costa", WaterLine, distance * 2 + 1.6);
+        UseStroke(svg, "costa", water, distance * 2);
     }
 
     internal static void AppendStroke(StringBuilder svg, string d, string color, double width)

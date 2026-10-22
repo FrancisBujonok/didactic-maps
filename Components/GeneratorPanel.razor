@@ -93,6 +93,20 @@
         </select>
     </label>
 
+    @* El detalle de costa solo existe en el estilo Pintado: "Celdas" dibuja los lados de las celdas. *@
+    @if (_settings.Style == MapStyle.Painted)
+    {
+        <label class="field">
+            <span>Costas</span>
+            <select @bind="_settings.Coast">
+                @foreach (var (value, name) in GeneratorSettings.CoastLevels)
+                {
+                    <option value="@value">@name</option>
+                }
+            </select>
+        </label>
+    }
+
     <div class="btn-row">
         <button class="btn" disabled="@_busy" @onclick="GenerateAsync">Generar</button>
         <button class="btn" disabled="@_busy" @onclick="RandomizeAsync">Todo al azar</button>
@@ -348,6 +362,7 @@
         random.LandRatio = _settings.LandRatio;
         random.CellSize = _settings.CellSize;
         random.Style = _settings.Style;
+        random.Coast = _settings.Coast;
         random.Template = _settings.Template;
         random.SettlementDensity = _settings.SettlementDensity;
         random.KingdomCount = _settings.KingdomCount;

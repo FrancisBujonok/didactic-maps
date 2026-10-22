@@ -32,6 +32,17 @@ public enum MapStyle
 }
 
 /// <summary>
+/// Cuánto detalle tiene el dibujo de la costa en el estilo Pintado (ver CoastWarp). Tampoco
+/// cambia el mundo: solo la línea que se dibuja.
+/// </summary>
+public enum CoastDetail
+{
+    Smooth,     // suaves: la costa de las celdas, redondeada (como antes de existir esta opción)
+    Irregular,  // cabos, caletas y un serrucho fino
+    Rugged      // muy recortadas, como fiordos
+}
+
+/// <summary>
 /// Parámetros del generador de mapas. Se guardan con el proyecto: con los mismos valores
 /// se obtiene exactamente el mismo mapa.
 /// </summary>
@@ -80,6 +91,17 @@ public class GeneratorSettings
 
     public MapStyle Style { get; set; } = MapStyle.Painted;
 
+    /// <summary>
+    /// Detalle de la costa. Los mapas guardados antes de esta opción no la traen y quedan
+    /// suaves, como se veían; los nuevos (CreateRandom) nacen irregulares.
+    /// </summary>
+    public CoastDetail Coast { get; set; } = CoastDetail.Smooth;
+
+    public static readonly (CoastDetail Value, string Name)[] CoastLevels =
+    {
+        (CoastDetail.Smooth, "Suaves"), (CoastDetail.Irregular, "Irregulares"), (CoastDetail.Rugged, "Muy recortadas")
+    };
+
     // ---- Poblados ("Poblar mapa"). No cambian la imagen: se aplican sobre el mundo ya generado.
 
     /// <summary>Dónde caen las ciudades, aldeas y lugares, y cómo se llaman.</summary>
@@ -109,7 +131,8 @@ public class GeneratorSettings
         ClimateSeed = NewSeed(),
         RiverSeed = NewSeed(),
         BiomeSeed = NewSeed(),
-        SettlementSeed = NewSeed()
+        SettlementSeed = NewSeed(),
+        Coast = CoastDetail.Irregular
     };
 
     /// <summary>
@@ -145,6 +168,8 @@ public class GeneratorSettings
             Template = ReliefTemplate.Continent;
         if (!Enum.IsDefined(Style))
             Style = MapStyle.Painted;
+        if (!Enum.IsDefined(Coast))
+            Coast = CoastDetail.Smooth;
 
         // Un mapa de antes de los retoques, hecho con otra plantilla, puede guardar un dibujo
         // viejo que nunca se usó: se descarta para que el mundo se rearme igual que su imagen.

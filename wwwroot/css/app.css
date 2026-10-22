@@ -134,15 +134,17 @@ h3 {
     outline-offset: var(--focus);
 }
 
-/* Íconos de la interfaz (Components/UiIcon.razor): mismo trazo que los de los pines. */
+/* Íconos de la interfaz (Components/UiIcon.razor): mismo trazo que los de los pines, con
+   uniones en ángulo y puntas rectas. */
 .ui-icon {
     width: var(--icon-medium);
     height: var(--icon-medium);
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-miterlimit: 4;
     flex: none;
 }
 
@@ -932,9 +934,14 @@ input[type="range"] {
     transform: translate(-50%, -50%) scale(var(--inv-scale, 1));
 }
 
-/* Insignia: borde de papel y contorno de tinta, así se distingue sobre cualquier color del
-   mapa. El ícono va en el centro, en tinta o papel según el color de la capa (--pin-ink). */
+/* Insignia con doble filete, como en los atlas grabados: por fuera, una línea de tinta y un
+   borde de papel; por dentro, a dos píxeles del borde, un hilo fino del color del ícono. Así se
+   distingue sobre cualquier color del mapa. El ícono va en el centro, en tinta o papel según el
+   color de la capa (--pin-ink). --rings son los anillos de adentro: hover y selección suman los
+   de afuera sin perderlos. */
 .pin .dot {
+    --rings: inset 0 0 0 var(--focus) var(--pin-color, var(--accent)),
+             inset 0 0 0 calc(var(--focus) + 1px) var(--pin-ink, var(--paper));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -944,11 +951,14 @@ input[type="range"] {
     background: var(--pin-color, var(--accent));
     color: var(--pin-ink, var(--paper));
     border: var(--focus) solid var(--paper);
-    box-shadow: 0 0 0 1px var(--ink);
+    box-shadow: var(--rings), 0 0 0 1px var(--ink);
     transition: box-shadow var(--fast);
 }
 
-.pin:hover .dot { box-shadow: 0 0 0 var(--focus) var(--ink); }
+/* En la insignia chica (20 px) el hilo de adentro se empastaría con el ícono: va sin él. */
+.pin.size-small .dot { --rings: 0 0 0 0 transparent; }
+
+.pin:hover .dot { box-shadow: var(--rings), 0 0 0 var(--focus) var(--ink); }
 
 /* Capital: un segundo anillo de tinta por fuera, como el doble círculo de los atlas. */
 .pin.capital .dot {
@@ -956,15 +966,17 @@ input[type="range"] {
     outline-offset: var(--focus);
 }
 
-/* Íconos de tipo de pin (Components/PinIcon.razor): todos con el mismo trazo. */
+/* Íconos de tipo de pin (Components/PinIcon.razor): todos con el mismo trazo. Uniones en
+   ángulo y puntas rectas: el filo de una lámina impresa (frontones, almenas y estrellas). */
 .pin-icon {
     width: var(--pin-icon, var(--icon-medium));
     height: var(--pin-icon, var(--icon-medium));
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-miterlimit: 4;
     flex: none;
 }
 
@@ -973,11 +985,18 @@ input[type="range"] {
 .pin.size-large { --pin: var(--pin-large); --pin-icon: var(--icon-large); }
 
 /* ---- Formas, según el grupo del tipo (MapPin.KindGroups). */
-.pin.shape-square .dot { border-radius: var(--radius); }
+
+/* Defensas: escudo, recto arriba y en punta redondeada abajo. Los filetes siguen la forma. El
+   ícono sube un poco, porque abajo el escudo se angosta. */
+.pin.shape-square .dot {
+    border-radius: var(--radius) var(--radius) 50% 50% / var(--radius) var(--radius) 70% 70%;
+    padding-bottom: calc(var(--pin) / 8);
+}
 
 /* Sin insignia: solo el ícono en el color de la capa, con un halo de papel para leerse sobre
    cualquier terreno. Al pasar el mouse o al elegirlo aparece el fondo de papel. */
 .pin.shape-plain .dot {
+    --rings: 0 0 0 0 transparent;
     background: transparent;
     border-color: transparent;
     box-shadow: none;
@@ -1005,31 +1024,33 @@ input[type="range"] {
 
 .pin.selected .dot,
 .pin:focus-visible .dot {
-    box-shadow: 0 0 0 var(--focus) var(--ink), 0 0 0 var(--space-1) var(--paper), 0 0 0 calc(var(--space-1) + var(--focus)) var(--ink);
+    box-shadow: var(--rings), 0 0 0 var(--focus) var(--ink), 0 0 0 var(--space-1) var(--paper), 0 0 0 calc(var(--space-1) + var(--focus)) var(--ink);
 }
 
+/* Nombre del lugar, como en los atlas: tinta con un halo de papel, sin cartel, en EB Garamond.
+   El halo lo hace legible sobre cualquier terreno sin tapar el mapa con un recuadro. */
 .pin .label {
     position: absolute;
     left: 50%;
     top: 100%;
     transform: translateX(-50%);
-    margin-top: var(--space-2);
-    padding: 0 var(--space-2);
-    background: var(--ink);
-    color: var(--paper);
-    border-radius: var(--radius);
+    margin-top: var(--space-1);
+    color: var(--ink);
     font-family: var(--font-title);
     font-size: var(--text-sm);
     font-weight: 500;
     white-space: nowrap;
+    text-shadow: 0 0 calc(var(--space-1) / 2) var(--paper), 0 0 calc(var(--space-1) / 2) var(--paper),
+                 0 0 var(--space-1) var(--paper);
     pointer-events: none;
 }
 
-/* Nombres según la importancia: chicos para lo menor, grandes y en negrita para lo mayor, y
-   la capital en mayúsculas espaciadas como en los atlas. */
-.pin.size-small .label { margin-top: var(--space-1); font-size: var(--text-xs); }
-.pin.size-large .label { font-size: var(--text-md); font-weight: 700; }
-.pin.capital .label { text-transform: uppercase; letter-spacing: .06em; }
+/* Jerarquía de los atlas: lo menor en minúscula y chico, lo mediano en versalitas, lo grande
+   en mayúsculas espaciadas y en negrita, y la capital con un poco más de espacio. */
+.pin.size-small .label { font-size: var(--text-xs); }
+.pin.size-medium .label { font-variant: small-caps; letter-spacing: .03em; }
+.pin.size-large .label { font-size: var(--text-md); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.pin.capital .label { text-transform: uppercase; letter-spacing: .1em; }
 
 /* Generalización: con el mapa alejado (clase "far", la pone mapview.js) no se muestran los
    nombres de los lugares chicos, para que no se pisen. Al elegir uno, su nombre se ve igual. */

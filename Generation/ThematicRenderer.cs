@@ -134,7 +134,7 @@ public static class ThematicRenderer
     /// Capa de reinos: relleno de color de cada reino, recortado con la costa del mapa, y
     /// fronteras entre celdas de dueños distintos.
     /// </summary>
-    public static string RenderRegions(World world, IReadOnlyList<Region> regions, MapStyle style)
+    public static string RenderRegions(World world, IReadOnlyList<Region> regions, MapStyle style, CoastDetail coast = CoastDetail.Smooth)
     {
         var mesh = world.Mesh;
         var owner = Owners(world, regions);
@@ -142,7 +142,8 @@ public static class ThematicRenderer
 
         // Mismo molde de tierra que el mapa de terreno, así los rellenos no se salen de la costa.
         var passes = style == MapStyle.Painted ? SvgMapRenderer.SmoothPasses : 0;
-        var (ocean, lake) = SvgMapRenderer.TraceShores(world, passes);
+        var warp = style == MapStyle.Painted ? CoastWarp.For(coast, mesh.Spacing) : null;
+        var (ocean, lake) = SvgMapRenderer.TraceShores(world, passes, warp);
         svg.Append($"<defs><clipPath id=\"tierra\"><path clip-rule=\"evenodd\" d=\"{SvgMapRenderer.ClosedPath(ocean)}{SvgMapRenderer.ClosedPath(lake)}\"/></clipPath></defs>");
 
         // La transparencia va en el grupo y no en cada celda: si cada celda fuera transparente,

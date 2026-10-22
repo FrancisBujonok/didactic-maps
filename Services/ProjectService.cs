@@ -471,7 +471,7 @@ public class ProjectService
             EditStage.ApplyBiomes(world, Project.CellEdits);
         SetWorld(world); // aunque sea el mismo mundo, cambió: las vistas guardadas ya no sirven
 
-        ImageDataUrl = MapGenerator.Draw(world, settings.Style);
+        ImageDataUrl = MapGenerator.Draw(world, settings);
         RequestSave();
         await SaveImageAsync();
     }
@@ -929,7 +929,7 @@ public class ProjectService
 
         var world = GetWorld()!;
         var svg = view == MapView.Regions
-            ? ThematicRenderer.RenderRegions(world, Project.Regions, settings.Style)
+            ? ThematicRenderer.RenderRegions(world, Project.Regions, settings.Style, settings.Coast)
             : ThematicRenderer.RenderData(world, view);
 
         var url = MapGenerator.ToDataUrl(svg);
