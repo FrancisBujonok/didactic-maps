@@ -3,10 +3,10 @@
 @inject ProjectService Store
 @inject IJSRuntime JS
 
-<div class="app @(SelectedPin is not null || OpenSheet is not null ? "reading" : "")">
+<div class="app">
 
-    @* ===================== Panel izquierdo: proyecto y capas ===================== *@
-    <aside class="panel panel-left">
+    @* ===================== Lomo: modos, proyecto, generador, fichas y capas ===================== *@
+    <aside class="spine">
         <h1>Mapa de Mundos</h1>
 
         @if (!Store.Loaded)
@@ -15,6 +15,25 @@
         }
         else
         {
+            @* Modos del mapa: qué hace un clic o un arrastre sobre él. *@
+            <nav class="modes" aria-label="Modo del mapa">
+                <button class="mode @(_mode == Mode.Navigate ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.Navigate ? "true" : "false")"
+                        @onclick="() => _mode = Mode.Navigate"><UiIcon Name="move" /> Navegar</button>
+                <button class="mode @(_mode == Mode.AddPin ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.AddPin ? "true" : "false")"
+                        @onclick="() => _mode = Mode.AddPin"><UiIcon Name="pin" /> Colocar pines</button>
+                <button class="mode @(_mode == Mode.Inspect ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.Inspect ? "true" : "false")"
+                        disabled="@(Store.Project.Generator is null)"
+                        title="@(Store.Project.Generator is null ? "Solo para mapas generados" : "Clic en el mapa para ver los datos de una celda")"
+                        @onclick="EnterInspectModeAsync"><UiIcon Name="cells" /> Ver celdas</button>
+                <button class="mode @(_mode == Mode.Sketch ? "on" : "")"
+                        aria-pressed="@(_mode == Mode.Sketch ? "true" : "false")"
+                        title="Dibujar costas, agua, montañas y biomas sobre el mapa"
+                        @onclick="StartSketch"><UiIcon Name="draw" /> Dibujar</button>
+            </nav>
+
             <label class="field">
                 <span>Proyecto</span>
                 <input type="text" @bind="Store.Project.Name" @bind:event="oninput" @bind:after="OnDataChanged" />
@@ -56,14 +75,14 @@
                         <span class="count" title="Cantidad de pines">@PinCount(layer)</span>
                         <button class="icon-btn" title="Subir (se dibuja encima)"
                                 aria-label="Subir la capa @layer.Name"
-                                @onclick="() => MoveLayer(layer, -1)" @onclick:stopPropagation="true">↑</button>
+                                @onclick="() => MoveLayer(layer, -1)" @onclick:stopPropagation="true"><UiIcon Name="up" /></button>
                         <button class="icon-btn" title="Bajar"
                                 aria-label="Bajar la capa @layer.Name"
-                                @onclick="() => MoveLayer(layer, 1)" @onclick:stopPropagation="true">↓</button>
+                                @onclick="() => MoveLayer(layer, 1)" @onclick:stopPropagation="true"><UiIcon Name="down" /></button>
                         <button class="icon-btn" title="Eliminar capa"
                                 aria-label="Eliminar la capa @layer.Name"
                                 disabled="@(Store.Project.Layers.Count == 1)"
-                                @onclick="() => RemoveLayerAsync(layer)" @onclick:stopPropagation="true">x</button>
+                                @onclick="() => RemoveLayerAsync(layer)" @onclick:stopPropagation="true"><UiIcon Name="close" /></button>
                     </div>
                 }
             </div>
@@ -74,23 +93,10 @@
         }
     </aside>
 
-    @* ===================== Centro: barra de herramientas y mapa ===================== *@
-    <main class="center">
-        <div class="toolbar">
-            <div class="seg">
-                <button class="btn @(_mode == Mode.Navigate ? "on" : "")"
-                        aria-pressed="@(_mode == Mode.Navigate ? "true" : "false")"
-                        @onclick="() => _mode = Mode.Navigate">Navegar</button>
-                <button class="btn @(_mode == Mode.AddPin ? "on" : "")"
-                        aria-pressed="@(_mode == Mode.AddPin ? "true" : "false")"
-                        @onclick="() => _mode = Mode.AddPin">Colocar pines</button>
-                <button class="btn @(_mode == Mode.Inspect ? "on" : "")"
-                        aria-pressed="@(_mode == Mode.Inspect ? "true" : "false")"
-                        disabled="@(Store.Project.Generator is null)"
-                        title="@(Store.Project.Generator is null ? "Solo para mapas generados" : "Clic en el mapa para ver los datos de una celda")"
-                        @onclick="EnterInspectModeAsync">Ver celdas</button>
-            </div>
-
+    @* ===================== Mesa: el mapa ocupa todo; las barras flotan encima ===================== *@
+    <main class="desk">
+        @* Tira de abajo: qué muestra el mapa, etiquetas, ajuste y avisos. *@
+        <div class="map-bar">
             <label class="check">
                 <span>Vista</span>
                 <select value="@_view" @onchange="OnViewChangedAsync"
@@ -107,10 +113,13 @@
                 <input type="checkbox" @bind="_showLabels" /> Etiquetas
             </label>
 
-            <button class="btn" @onclick="FitAsync">Ajustar a pantalla</button>
+            <button class="btn small" @onclick="FitAsync">Ajustar a pantalla</button>
 
-            <span class="status">@Store.SaveStatus</span>
-            <span class="status msg">@_message</span>
+            <span class="status" role="status">@Store.SaveStatus</span>
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <span class="status msg">@_message</span>
+            }
         </div>
 
         @* Barra de dibujo: solo en "Dibujar costa". *@
@@ -309,118 +318,118 @@
         </div>
     </main>
 
-    @* ===================== Panel derecho: ficha del pin ===================== *@
-    <aside class="panel panel-right">
-        @if (Store.Loaded && SelectedPin is { } selectedPin)
-        {
-            <h2>@selectedPin.Title</h2>
-
-            <label class="field">
-                <span>Título</span>
-                <NameInput @bind-Value="selectedPin.Title" @bind-Value:after="() => OnPinChanged(selectedPin)" />
-            </label>
-
-            @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
-            <div class="field">
-                <span>Tipo</span>
-                <div class="kind-row">
-                    <span class="kind-preview"><PinIcon Kind="@selectedPin.Kind" /></span>
-                    <span class="kind-name">@selectedPin.Kind</span>
-                    <button type="button" class="btn small" aria-expanded="@(_choosingKind ? "true" : "false")"
-                            @onclick="() => _choosingKind = !_choosingKind">@(_choosingKind ? "Listo" : "Cambiar")</button>
-                </div>
-                @if (_choosingKind)
-                {
-                    <KindPicker Value="@selectedPin.Kind" ValueChanged="kind => ChangeKind(selectedPin, kind)" />
-                }
-            </div>
-
-            @* Tamaño: la importancia del lugar en el mapa. *@
-            <div class="field">
-                <span id="tamano-pin">Tamaño</span>
-                <div class="seg" role="group" aria-labelledby="tamano-pin">
-                    @foreach (var (size, name) in SizeNames)
-                    {
-                        <button type="button" class="btn small @(selectedPin.Size == size ? "on" : "")"
-                                aria-pressed="@(selectedPin.Size == size ? "true" : "false")"
-                                @onclick="() => ChangeSize(selectedPin, size)">@name</button>
-                    }
-                </div>
-            </div>
-
-            <label class="field">
-                <span>Capa</span>
-                <select @bind="selectedPin.LayerId" @bind:after="() => OnPinChanged(selectedPin)">
-                    @foreach (var l in Store.Project.Layers)
-                    {
-                        <option value="@l.Id">@l.Name</option>
-                    }
-                </select>
-            </label>
-
-            @* Reino: se calcula por la celda donde está el pin, así que cambia si se lo mueve. *@
-            @if (Store.Project.Generator is not null)
+    @* ===================== Hoja flotante: ficha del pin, de un reino o suelta, o celdas ===================== *@
+    @if (Store.Loaded && HasSheet)
+    {
+        <aside class="sheet" aria-label="Ficha">
+            @if (SelectedPin is { } selectedPin)
             {
-                var region = Store.RegionAt(selectedPin);
-                var capitalOf = Store.CapitalOf(selectedPin);
-
-                <div class="field">
-                    <span>Reino</span>
-                    <p class="field-value">@(region?.Name ?? "Sin reino")</p>
+                <div class="sheet-head">
+                    <h2>@selectedPin.Title</h2>
+                    <button type="button" class="icon-btn" aria-label="Cerrar la ficha" title="Cerrar"
+                            @onclick="() => _selectedPinId = null"><UiIcon Name="close" /></button>
                 </div>
-
-                @if (region is not null)
+                <p class="sheet-meta">@PinMeta(selectedPin)</p>
+    
+                <label class="field">
+                    <span>Título</span>
+                    <NameInput @bind-Value="selectedPin.Title" @bind-Value:after="() => OnPinChanged(selectedPin)" />
+                </label>
+    
+                @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
+                <div class="field">
+                    <span>Tipo</span>
+                    <div class="kind-row">
+                        <span class="kind-preview"><PinIcon Kind="@selectedPin.Kind" /></span>
+                        <span class="kind-name">@selectedPin.Kind</span>
+                        <button type="button" class="btn small" aria-expanded="@(_choosingKind ? "true" : "false")"
+                                @onclick="() => _choosingKind = !_choosingKind">@(_choosingKind ? "Listo" : "Cambiar")</button>
+                    </div>
+                    @if (_choosingKind)
+                    {
+                        <KindPicker Value="@selectedPin.Kind" ValueChanged="kind => ChangeKind(selectedPin, kind)" />
+                    }
+                </div>
+    
+                @* Tamaño: la importancia del lugar en el mapa. *@
+                <div class="field">
+                    <span id="tamano-pin">Tamaño</span>
+                    <div class="seg" role="group" aria-labelledby="tamano-pin">
+                        @foreach (var (size, name) in SizeNames)
+                        {
+                            <button type="button" class="btn small @(selectedPin.Size == size ? "on" : "")"
+                                    aria-pressed="@(selectedPin.Size == size ? "true" : "false")"
+                                    @onclick="() => ChangeSize(selectedPin, size)">@name</button>
+                        }
+                    </div>
+                </div>
+    
+                <label class="field">
+                    <span>Capa</span>
+                    <select @bind="selectedPin.LayerId" @bind:after="() => OnPinChanged(selectedPin)">
+                        @foreach (var l in Store.Project.Layers)
+                        {
+                            <option value="@l.Id">@l.Name</option>
+                        }
+                    </select>
+                </label>
+    
+                @* Reino: se calcula por la celda donde está el pin, así que cambia si se lo mueve. *@
+                @if (Store.Project.Generator is not null)
                 {
-                    <label class="check field">
-                        <input type="checkbox" checked="@(capitalOf == region)"
-                               @onchange="e => SetCapital(region, selectedPin, e)" />
-                        Capital de @region.Name
-                    </label>
+                    var region = Store.RegionAt(selectedPin);
+                    var capitalOf = Store.CapitalOf(selectedPin);
+    
+                    <div class="field">
+                        <span>Reino</span>
+                        <p class="field-value">@(region?.Name ?? "Sin reino")</p>
+                    </div>
+    
+                    @if (region is not null)
+                    {
+                        <label class="check field">
+                            <input type="checkbox" checked="@(capitalOf == region)"
+                                   @onchange="e => SetCapital(region, selectedPin, e)" />
+                            Capital de @region.Name
+                        </label>
+                    }
+    
+                    @if (capitalOf is not null && capitalOf != region)
+                    {
+                        <p class="hint">Es la capital de @capitalOf.Name, pero está fuera de su territorio.</p>
+                    }
                 }
-
-                @if (capitalOf is not null && capitalOf != region)
-                {
-                    <p class="hint">Es la capital de @capitalOf.Name, pero está fuera de su territorio.</p>
-                }
+    
+                <EntryText Target="WikiTarget.Pin(selectedPin.Id)" OnOpen="OpenTargetAsync" />
+    
+                <p class="hint">
+                    Posición: @FormatPercent(selectedPin.X) / @FormatPercent(selectedPin.Y).
+                    Arrastrá el pin en el mapa para moverlo.
+                </p>
+    
+                <div class="sheet-foot">
+                    <button class="btn small danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
+                </div>
             }
-
-            <EntryText Target="WikiTarget.Pin(selectedPin.Id)" OnOpen="OpenTargetAsync" />
-
-            <p class="hint">
-                Posición: @FormatPercent(selectedPin.X) / @FormatPercent(selectedPin.Y).
-                Arrastrá el pin en el mapa para moverlo.
-            </p>
-
-            <button class="btn danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
-        }
-        else if (Store.Loaded && OpenSheet is { } sheet)
-        {
-            <EntrySheet Target="sheet" OnOpen="OpenTargetAsync" OnShow="CenterOnAsync"
-                        OnClose="() => _sheet = null" OnRegionChanged="OnRegionsChanged" />
-        }
-        else if (Store.Loaded && _selectedCells.Count > 0 && Store.WorldReady)
-        {
-            <CellPanel World="Store.GetWorld()!" Cells="_selectedCells"
-                       OnClearSelection="ClearCellSelection" OnEdited="OnCellsEdited" />
-        }
-        else if (Store.Loaded && _mode == Mode.AddPin)
-        {
-            <p class="muted">Elegí un tipo en la barra de arriba del mapa y hacé clic donde quieras colocarlo.</p>
-        }
-        else if (Store.Loaded && _mode == Mode.Inspect)
-        {
-            <p class="muted">
-                Hacé clic en el mapa para ver los datos de una celda. Shift + clic agrega o quita
-                celdas; Shift + arrastrar las pinta.
-            </p>
-        }
-        else if (Store.Loaded)
-        {
-            <p class="muted">
-                Seleccioná un pin para ver y editar su ficha, o activá "Colocar pines" y hacé clic en el mapa para crear uno.
-            </p>
-        }
-    </aside>
+            else if (OpenSheet is { } sheet)
+            {
+                <EntrySheet Target="sheet" OnOpen="OpenTargetAsync" OnShow="CenterOnAsync"
+                            OnClose="() => _sheet = null" OnRegionChanged="OnRegionsChanged" />
+            }
+            else if (_selectedCells.Count > 0 && Store.WorldReady)
+            {
+                <CellPanel World="Store.GetWorld()!" Cells="_selectedCells"
+                           OnClearSelection="ClearCellSelection" OnEdited="OnCellsEdited" />
+            }
+            else if (_mode == Mode.Inspect)
+            {
+                <p class="muted">
+                    Hacé clic en el mapa para ver los datos de una celda. Shift + clic agrega o quita
+                    celdas; Shift + arrastrar las pinta.
+                </p>
+            }
+        </aside>
+    }
 </div>
 
 @code {
@@ -442,7 +451,7 @@
     private MapView _requestedView = MapView.Terrain; // última vista elegida (puede estar preparándose)
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
-    private WikiTarget? _sheet;                 // ficha de reino o suelta abierta en el panel derecho
+    private WikiTarget? _sheet;                 // ficha de reino o suelta abierta en la hoja flotante
     private readonly HashSet<int> _selectedCells = new(); // índices de celdas de la malla del mundo generado
     private bool _paintAdds;                  // el pincel agrega (true) o quita (false) celdas
     private (double X, double Y) _lastPaint;  // último punto pintado, en píxeles del mapa
@@ -682,12 +691,31 @@
     /// <summary>Ficha de reino o suelta abierta, si todavía existe (pudo borrarse desde otro lado).</summary>
     private WikiTarget? OpenSheet => _sheet is { } sheet && Store.Exists(sheet) ? sheet : null;
 
-    /// <summary>Lo que muestra el panel derecho, para resaltarlo en la lista de fichas.</summary>
+    /// <summary>
+    /// True si la hoja flotante tiene algo que mostrar. Sin nada elegido no aparece: el mapa
+    /// queda entero a la vista.
+    /// </summary>
+    private bool HasSheet =>
+        SelectedPin is not null || OpenSheet is not null ||
+        (_selectedCells.Count > 0 && Store.WorldReady) || _mode == Mode.Inspect;
+
+    /// <summary>Línea de datos bajo el nombre del pin: "Ciudad · Lania Alta · capital".</summary>
+    private string PinMeta(MapPin pin)
+    {
+        var parts = new List<string> { pin.Kind };
+        if (Store.Project.Generator is not null && Store.RegionAt(pin) is { } region)
+            parts.Add(region.Name);
+        if (Store.CapitalOf(pin) is not null)
+            parts.Add("capital");
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>Lo que muestra la hoja flotante, para resaltarlo en la lista de fichas.</summary>
     private WikiTarget? CurrentTarget => SelectedPin is { } pin ? WikiTarget.Pin(pin.Id) : OpenSheet;
 
     /// <summary>
     /// Abre una ficha (desde la lista, un enlace o una mención). Un lugar se selecciona como si se
-    /// hubiera hecho clic en su pin; un reino o una ficha suelta se abren en el panel derecho.
+    /// hubiera hecho clic en su pin; un reino o una ficha suelta se abren en la hoja flotante.
     /// Si es un lugar o un reino, el mapa se centra en él.
     /// </summary>
     private async Task OpenTargetAsync(WikiTarget target)

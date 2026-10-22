@@ -269,11 +269,21 @@ export function fit() {
 
 // Centra el mapa en un punto normalizado (0 a 1), por ejemplo al abrir la ficha de un lugar.
 // Si el mapa estaba alejado, se acerca al doble del ajuste: ahí ya se leen los nombres chicos.
+// La hoja de la ficha flota sobre la derecha del mapa: se centra en la parte que queda visible.
 export function centerOn(nx, ny) {
   const s = state;
   if (!s || !s.world.offsetWidth) return;
+
+  // Ancho tapado por la hoja: su ancho más los márgenes (tokens --sheet y --space-4 del CSS).
+  // En pantallas angostas la hoja va debajo del mapa y no tapa nada.
+  const css = getComputedStyle(document.documentElement);
+  const covered = window.matchMedia('(max-width: 900px)').matches
+    ? 0
+    : parseFloat(css.getPropertyValue('--sheet')) + 2 * parseFloat(css.getPropertyValue('--space-4'));
+  const visibleWidth = Math.max(s.viewport.clientWidth - covered, s.viewport.clientWidth / 2);
+
   s.scale = clamp(Math.max(s.scale, s.fitScale * 2), s.minScale, s.maxScale);
-  s.x = s.viewport.clientWidth / 2 - nx * s.world.offsetWidth * s.scale;
+  s.x = visibleWidth / 2 - nx * s.world.offsetWidth * s.scale;
   s.y = s.viewport.clientHeight / 2 - ny * s.world.offsetHeight * s.scale;
   s.apply();
 }

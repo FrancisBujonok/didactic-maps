@@ -2,7 +2,11 @@
 @inject ProjectService Store
 
 @* Panel de las celdas seleccionadas: sus datos y las herramientas para editarlas a mano. *@
-<h2>@(Cells.Count == 1 ? "Celda" : $"{Cells.Count} celdas")</h2>
+<div class="sheet-head">
+    <h2>@(Cells.Count == 1 ? "Celda" : $"{Cells.Count} celdas")</h2>
+    <button type="button" class="icon-btn" aria-label="Quitar la selección" title="Quitar la selección"
+            @onclick="OnClearSelection"><UiIcon Name="close" /></button>
+</div>
 
 @if (Cells.Count == 1)
 {
@@ -39,7 +43,7 @@ else
 <h3>Reino</h3>
 @if (Store.Project.Regions.Count == 0)
 {
-    <p class="hint">Creá un reino en el panel izquierdo para asignarle celdas.</p>
+    <p class="hint">Creá un reino en la lista "Reinos" del lomo para asignarle celdas.</p>
 }
 else
 {

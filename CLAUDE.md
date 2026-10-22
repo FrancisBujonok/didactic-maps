@@ -8,14 +8,15 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `dotnet run`: ejecutar en http://localhost:5000 (no hay launchSettings.json, es el puerto por defecto).
 - `dotnet test Tests/MapaMundos.Tests`: correr las pruebas (unos 2 s). No hay archivo de solución a propósito: con un `.sln` o `.slnx` en la raíz, `dotnet build` y `dotnet run` sin argumentos fallan por haber dos archivos de proyecto o solución.
 - SDK instalado: 10.0.400. Destino: net10.0, paquetes 10.0.*.
-- Vista previa de Claude: configuración `pruebas` en `.claude/launch.json`, puerto 5080. Es otro origen, así que su IndexedDB no pisa los datos reales del puerto 5000. Si el panel está oculto no dibuja cuadros: no sirven capturas ni ResizeObserver, hay que probar con scripts o pedirle al autor que mire.
+- Vista previa de Claude: configuración `pruebas` en `.claude/launch.json`, puerto 5080. Es otro origen, así que su IndexedDB no pisa los datos reales del puerto 5000. Si el panel está oculto no dibuja cuadros: no sirven capturas ni ResizeObserver; se puede mostrar con `show_pane` (preview) o probar con scripts. Para capturas de escritorio, emular 1024 x 680 (a 1440 la imagen sale ilegible). A veces la captura toma un cuadro a mitad de una transición de color: repetirla antes de sacar conclusiones.
 - Detener el servidor antes de `dotnet build`. Si se compila con el servidor corriendo, la app puede quedar en "Cargando..." con errores de `integrity` en la consola: se arregla con `dotnet clean`, `dotnet build` y recarga forzada (Ctrl+F5).
 
 ## Estructura
 
 - `Models/`: `MapProject`, `MapLayer`, `MapPin` (MapProject.cs) y `ProjectFile`, `PickedFile` (ProjectFile.cs).
 - `Services/ProjectService.cs`: estado del proyecto abierto, guardado con debounce de 400 ms, import/export.
-- `Components/MapEditor.razor`: interfaz principal (panel de capas, barra, mapa, ficha del pin).
+- `Components/MapEditor.razor`: interfaz principal: lomo (`.spine`: modos, proyecto, generador, reinos, fichas, capas), mesa (`.desk`: el mapa entero, con la tira de abajo `.map-bar` y la barra de colocación o dibujo `.placebar` flotando) y la hoja flotante de la ficha (`.sheet`, solo cuando hay algo que mostrar).
+- `Components/UiIcon.razor`: íconos de la interfaz (modos `move`, `pin`, `cells`, `draw`; `close`, `up`, `down`), mismas reglas que `PinIcon`.
 - `Components/GeneratorPanel.razor`: panel "Generar mapa" (semillas, tierra, detalle). Edita una copia de `GeneratorSettings` y la guarda al generar.
 - `Components/CellInfo.razor`: ficha de solo lectura de una celda (terreno, altura, temperatura, humedad, río).
 - `Components/CellPanel.razor`: panel de las celdas seleccionadas (una o varias): resumen y herramientas (terreno, subir, bajar, hacer tierra o agua, restaurar).
@@ -122,7 +123,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Templates de Razor de una sola línea en `WikiText`: con saltos de línea dentro del template, el espacio en blanco del código aparecía en el texto ("Corlis ." en lugar de "Corlis.").
   - Enlaces: se resuelven por nombre sin distinguir mayúsculas ni espacios de más; con nombres repetidos gana ficha suelta, después reino, después pin. Un nombre sin ficha se muestra punteado y tenue; al tocarlo se crea una ficha suelta (categoría "Otro") y se abre para escribir. "Mencionada en" no se guarda: se calcula leyendo los enlaces de todas las fichas.
   - Abrir la ficha de un lugar lo selecciona como un clic en su pin (y muestra su capa si estaba oculta); abrir un reino o una ficha suelta usa `_sheet` en `MapEditor`. Lugares y reinos centran el mapa (`centerOn`, con zoom al doble del ajuste); el reino se centra en su capital o en el punto de su nombre. Un clic en el mapa cierra la ficha abierta.
-  - Con una ficha abierta, `.app.reading` ensancha el panel derecho (280 a 400 px); bajo 900 px los paneles siguen apilados.
+  - La ficha va en la hoja flotante de la derecha (360 px). `centerOn` centra en la parte del mapa que la hoja no tapa (lee `--sheet` y `--space-4` del CSS); bajo 900 px la hoja va debajo del mapa.
   - La lista de fichas muestra las que existen; al buscar, también lugares y reinos sin texto ("(sin texto)") para poder empezarlos. Se suscribe a `WikiChanged` y `StatusChanged`.
   - Proyectos viejos: la `Description` de cada pin pasa a su ficha en `NormalizeEntries` (si ya tenía ficha, va arriba del texto) y queda vacía. El dato guardado se actualiza en el próximo guardado; hasta entonces cada carga repite la migración sin duplicar.
   - Renombrar: `NameInput` recuerda el nombre al entrar al campo (`focus`) y al salir (`change`, que llega una vez, al salir o con Enter) pregunta si hay fichas con enlaces al nombre viejo que quedaron sin destino (`EntriesWithBrokenLinksTo`). Si otra cosa todavía se llama así, sus enlaces siguen andando y no se pregunta; tampoco si solo cambian mayúsculas o si el nombre nuevo está vacío. `RenameLinks` cambia el nombre y conserva el texto propio (`[[viejo|texto]]` pasa a `[[nuevo|texto]]`), con las mismas reglas que el traductor (no cruza líneas, nombre no vacío). Nombres parecidos ("Corthal Viejo") no se tocan.
@@ -180,6 +181,8 @@ Resuelto:
 
 - 2026-10-22: renombrar arregla los enlaces (pedido por el autor). Probado en la app: renombrar un pin, una ficha suelta (rechazando: el enlace queda sin ficha) y un reino desde la lista (el texto propio del enlace se conserva), sin aviso al cambiar solo mayúsculas, todo guardado. 70 pruebas (6 nuevas).
 
+- 2026-10-22: dirección visual B "Atlas encuadernado" (pedido por el autor: trabajar más la estética; eligió la B entre dos maquetas). Lomo con modos (los modos salieron de la barra de arriba, que ya no existe), mapa a pantalla completa, ficha como hoja flotante con nombre, línea de datos ("Ciudad · Unelor · capital"), "x" para cerrar y "Eliminar" al pie; tira de abajo con vista, etiquetas y ajuste; íconos SVG propios para modos, cerrar, subir y bajar (revisados a 72 y 16 px); ángulo propio en las secciones desplegables; botones que no se parten. Revisado en la vista previa en claro, oscuro, 1024 px y 375 px. Ajustes tras la revisión: la tira y la barra de dibujo se corren a la izquierda de la hoja (`:has(.sheet)`, solo en pantallas anchas) y `centerOn` centra en la parte visible del mapa.
+
 Pendiente:
 
 - Próximo paso posible: importar mapa de alturas (opción C).
@@ -200,10 +203,15 @@ Pendiente:
 - No existe la carpeta `/ejemplos` con el archivo de Azgaar (lo aporta el autor).
 - Ejercicio del autor: mover el pin seleccionado con las flechas del teclado en `OnPinKeyDown`.
 
-Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su ratio antes de usarlo):
+Dirección visual B "Atlas encuadernado" (elegida por el autor el 2026-10-22, reemplaza a la A "Carta impresa"): el mapa ocupa toda la mesa, un lomo oscuro a la izquierda lleva los modos y las listas, y las fichas y barras flotan como hojas de papel con sombra (`--lift`). EB Garamond (títulos, nombres en el mapa, fichas) y Source Sans 3 (controles).
 
-- Claro: fondo #F4EFE3, panel #E9E2D0, mesa #DDD5C0, hover #DDD4BE, texto #23201A, tenue #5C5546, borde #857B66, acento #9C2F1F.
-- Oscuro: fondo #1A1815, panel #25221D, mesa #121110, hover #353028, texto #ECE6D8, tenue #B0A795, borde #857C6A, acento #E58B74.
+Paleta B (contrastes AA verificados en todas las combinaciones de texto, tenue y acento sobre panel, campo y hover; al agregar un color nuevo, calcular su ratio antes de usarlo, por ejemplo con un script de Node):
+
+- Hoja clara: panel #F3ECDD, campo #FBF7EF, hover #E8DFCC, texto #221C16, tenue #5E5444, borde #8A7D66, acento #80520F (peor caso: acento sobre hover 5,06; el ocre #8C5A14 de la maqueta daba 4,42 y se oscureció), texto sobre acento #FBF7EF. Mesa #3A332B.
+- Lomo claro: panel #2A211B, campo #362C24, hover #433830, texto #EFE6D4, tenue #B9AC93, borde #8E806B, acento #D9A75B, texto sobre acento #2A211B.
+- Hoja oscura: panel #29231C, campo #211C16, hover #362E26, texto #ECE3D1, tenue #B3A68D, borde #857A66, acento #DDAB60, texto sobre acento #1C1712. Mesa #14110E: la hoja contra la mesa da solo 1,21, la separa el borde (4,46).
+- Lomo oscuro: panel #1C1712, campo #262019, hover #322A22, texto #EFE6D4, tenue #A99C84, borde #7F735F, acento #D9A75B.
+- El lomo no tiene reglas propias para sus controles: `.spine` redefine los mismos tokens (`--panel`, `--bg`, `--text`, `--accent`...) con los valores `--spine-*`, y todo lo de adentro se pinta solo.
 - Pines y etiquetas usan tinta #23201A y papel #F4EFE3 fijos, porque van sobre el mapa y no sobre la interfaz.
 
 ## Hoja de ruta (en orden)

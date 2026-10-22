@@ -1,0 +1,26 @@
+@* Íconos de la interfaz (modos, cerrar, subir, bajar), con las mismas reglas que los de los
+   pines (PinIcon): grilla de 24 x 24, trazo 2, puntas redondeadas, sin relleno y del color del
+   texto. Son decorativos: el botón que los contiene lleva el nombre (aria-label o texto). *@
+<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="@(Paths.GetValueOrDefault(Name, Paths["close"]))" />
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+
+    private static readonly Dictionary<string, string> Paths = new()
+    {
+        // Navegar: cuatro flechas que salen del centro (mover el mapa).
+        ["move"] = "M12 4v16M4 12h16M9 7l3-3 3 3M9 17l3 3 3-3M7 9l-3 3 3 3M17 9l3 3-3 3",
+        // Colocar pines: gota con un círculo adentro.
+        ["pin"] = "M12 21c-4-4.5-6-8-6-11a6 6 0 0 1 12 0c0 3-2 6.5-6 11zM12 7.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5",
+        // Ver celdas: un hexágono, la forma de las celdas del generador.
+        ["cells"] = "M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z",
+        // Dibujar: lápiz en diagonal con su punta.
+        ["draw"] = "M4 20l1-4L16 5l3 3L8 19zM14 7l3 3",
+        // Cerrar y eliminar.
+        ["close"] = "M6 6l12 12M18 6L6 18",
+        ["up"] = "M12 19V5M6 11l6-6 6 6",
+        ["down"] = "M12 5v14M6 13l6 6 6-6",
+    };
+}

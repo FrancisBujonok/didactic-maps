@@ -1,20 +1,33 @@
-/* Mapa de Mundos - dirección visual "Carta impresa": papel cálido, tinta y un acento rojo.
+/* Mapa de Mundos - dirección visual "Atlas encuadernado": el mapa ocupa toda la mesa, el lomo
+   oscuro a la izquierda lleva los modos y las listas, y las fichas flotan como hojas de papel.
    Todo color, espacio y tamaño de letra sale de los tokens de :root. */
 
 :root {
     color-scheme: light dark;
 
-    /* Paleta, tema claro. Contrastes sobre --panel (el peor caso):
-       texto 12.57, tenue 5.72, acento 5.72, borde 3.24. */
-    --bg: #F4EFE3;        /* papel: fondo de campos y botones */
-    --panel: #E9E2D0;     /* paneles laterales y barra */
-    --desk: #DDD5C0;      /* mesa: fondo detrás del mapa */
-    --hover: #DDD4BE;     /* fondo de un control con el mouse encima */
-    --text: #23201A;      /* tinta */
-    --muted: #5C5546;     /* texto secundario */
-    --border: #857B66;    /* bordes de controles */
-    --accent: #9C2F1F;    /* rojo de cartógrafo */
-    --on-accent: #F4EFE3; /* texto sobre el acento (6.44) */
+    /* Hojas (fichas, barras flotantes). Los controles usan estos nombres; el lomo los redefine
+       con sus valores (ver .spine), así cada control se pinta solo según dónde está.
+       Contrastes AA verificados en todas las combinaciones de texto, tenue y acento sobre
+       --panel, --bg y --hover: el peor es el acento sobre --hover, 5.06. */
+    --panel: #F3ECDD;     /* papel de las hojas */
+    --bg: #FBF7EF;        /* campos y botones */
+    --hover: #E8DFCC;     /* fondo de un control con el mouse encima */
+    --text: #221C16;      /* tinta (14.33 sobre --panel) */
+    --muted: #5E5444;     /* texto secundario (6.31) */
+    --border: #8A7D66;    /* bordes de controles (3.43) */
+    --accent: #80520F;    /* ocre de encuadernación (5.70) */
+    --on-accent: #FBF7EF; /* texto sobre el acento (6.28) */
+    --desk: #3A332B;      /* mesa: fondo detrás del mapa (las hojas contrastan 10.57) */
+
+    /* Lomo: texto 12.72, tenue 7.05, acento 7.23, borde 4.09; peor caso tenue sobre hover 5.08. */
+    --spine-panel: #2A211B;
+    --spine-bg: #362C24;
+    --spine-hover: #433830;
+    --spine-text: #EFE6D4;
+    --spine-muted: #B9AC93;
+    --spine-border: #8E806B;
+    --spine-accent: #D9A75B;
+    --spine-on-accent: #2A211B;
 
     /* Etiquetas y pines van sobre el mapa, no sobre la interfaz: no cambian con el tema. */
     --ink: #23201A;
@@ -31,18 +44,23 @@
     --space-6: 24px;
     --space-8: 32px;
 
-    /* Tipografía */
-    --font-ui: "Alegreya Sans", "Segoe UI", sans-serif;
-    --font-title: "Alegreya", Georgia, serif;
+    /* Tipografía: EB Garamond (títulos, nombres en el mapa, texto de libro) y Source Sans 3
+       (controles: clara en tamaños chicos). */
+    --font-ui: "Source Sans 3", "Segoe UI", sans-serif;
+    --font-title: "EB Garamond", Georgia, serif;
     --text-xs: 0.75rem;   /* nombres de los lugares chicos en el mapa */
     --text-sm: 0.875rem;
     --text-md: 1rem;
     --text-lg: 1.25rem;
-    --text-xl: 1.5rem;
+    --text-xl: 1.625rem;
 
     --radius: 4px;
     --focus: 2px;      /* grosor del anillo de foco y de los bordes dobles */
     --control: 32px;   /* alto y ancho de los controles cuadrados */
+    --spine: 280px;    /* ancho del lomo */
+    --sheet: 360px;    /* ancho de la hoja de la ficha */
+    /* Sombra de una hoja sobre la mesa: la separa sin brillo ni desenfoque exagerado. */
+    --lift: 0 var(--space-1) var(--space-3) rgba(0, 0, 0, .35);
     /* Insignias e íconos de pin por tamaño (chico, mediano, grande): múltiplos de 4. */
     --pin-small: 20px;
     --pin-medium: 28px;
@@ -53,18 +71,29 @@
     --fast: 120ms;
 }
 
-/* Tema oscuro. Contrastes sobre --panel: texto 12.74, tenue 6.65, acento 6.25, borde 3.84. */
+/* Tema oscuro. Hojas: texto 12.19, tenue 6.48, acento 7.45, borde 3.68 (4.46 contra la mesa,
+   que es lo que separa la hoja de la mesa en oscuro). Lomo: texto 14.35, tenue 6.59,
+   acento 8.16, borde 3.83. Peor caso: tenue sobre hover, 5.22. */
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #1A1815;
-        --panel: #25221D;
-        --desk: #121110;
-        --hover: #353028;
-        --text: #ECE6D8;
-        --muted: #B0A795;
-        --border: #857C6A;
-        --accent: #E58B74;
-        --on-accent: #1A1815; /* 6.98 */
+        --panel: #29231C;
+        --bg: #211C16;
+        --hover: #362E26;
+        --text: #ECE3D1;
+        --muted: #B3A68D;
+        --border: #857A66;
+        --accent: #DDAB60;
+        --on-accent: #1C1712; /* 8.53 */
+        --desk: #14110E;
+
+        --spine-panel: #1C1712;
+        --spine-bg: #262019;
+        --spine-hover: #322A22;
+        --spine-text: #EFE6D4;
+        --spine-muted: #A99C84;
+        --spine-border: #7F735F;
+        --spine-accent: #D9A75B;
+        --spine-on-accent: #1C1712;
     }
 }
 
@@ -73,7 +102,7 @@
 html, body {
     height: 100%;
     margin: 0;
-    background: var(--panel);
+    background: var(--desk);
     color: var(--text);
     font-family: var(--font-ui);
     font-size: var(--text-md);
@@ -85,18 +114,18 @@ html, body {
 h1, h2 {
     margin: 0;
     font-family: var(--font-title);
-    font-weight: 700;
-    line-height: 1.2;
+    font-weight: 500;
+    line-height: 1.15;
 }
 
 h1 { font-size: var(--text-xl); margin-bottom: var(--space-4); }
-h2 { font-size: var(--text-lg); }
+h2 { font-size: var(--text-xl); }
 
 h3 {
     margin: var(--space-4) 0 var(--space-2);
     font-family: var(--font-title);
-    font-size: var(--text-md);
-    font-weight: 700;
+    font-size: var(--text-lg);
+    font-weight: 500;
 }
 
 /* Foco con teclado: el mismo anillo en todos los controles. */
@@ -105,56 +134,141 @@ h3 {
     outline-offset: var(--focus);
 }
 
-/* ---------- estructura: panel izquierdo | mapa | panel derecho ---------- */
+/* Íconos de la interfaz (Components/UiIcon.razor): mismo trazo que los de los pines. */
+.ui-icon {
+    width: var(--icon-medium);
+    height: var(--icon-medium);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex: none;
+}
+
+/* ---------- estructura: lomo | mesa con el mapa, y la hoja de la ficha flotando ---------- */
 
 .app {
+    position: relative; /* la hoja de la ficha se ubica respecto de toda la app */
     display: grid;
-    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 320px);
+    grid-template-columns: var(--spine) minmax(0, 1fr);
     height: 100vh;
 }
 
-/* Con una ficha abierta, el panel derecho se ensancha para leer cómodo. */
-.app.reading {
-    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 400px);
-}
-
-.panel {
+/* El lomo: los mismos tokens con los valores oscuros. Todo lo que está adentro (botones,
+   campos, secciones, listas) se adapta sin reglas propias. */
+.spine {
+    --panel: var(--spine-panel);
+    --bg: var(--spine-bg);
+    --hover: var(--spine-hover);
+    --text: var(--spine-text);
+    --muted: var(--spine-muted);
+    --border: var(--spine-border);
+    --accent: var(--spine-accent);
+    --on-accent: var(--spine-on-accent);
     background: var(--panel);
+    color: var(--text);
     padding: var(--space-4);
     overflow-y: auto;
-    border-right: 1px solid var(--border);
 }
 
-.panel-right {
-    border-right: 0;
-    border-left: 1px solid var(--border);
-}
-
-.panel-right h2 { margin-bottom: var(--space-4); }
-
-.center {
+/* Modos del mapa: una lista vertical, como un índice. El activo lleva una línea de acento. */
+.modes {
     display: flex;
     flex-direction: column;
-    min-width: 0;
-    min-height: 0;
+    gap: var(--space-1);
+    margin-bottom: var(--space-6);
 }
 
-/* En pantallas angostas los paneles se apilan y el mapa conserva un alto útil. */
+.mode {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: none;
+    color: var(--muted);
+    border: 0;
+    border-left: var(--focus) solid transparent;
+    border-radius: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--fast), color var(--fast), border-color var(--fast);
+}
+
+.mode:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.mode.on { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+.mode:disabled { opacity: .5; cursor: default; }
+
+/* La mesa: el mapa la ocupa entera y las barras flotan encima. */
+.desk {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    background: var(--desk);
+}
+
+/* Hoja: papel apoyado sobre la mesa (la ficha, las barras, la leyenda). */
+.sheet,
+.map-bar,
+.placebar,
+.legend {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--lift);
+}
+
+/* La ficha flota arriba a la derecha y hace scroll adentro si es larga. */
+.sheet {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    z-index: 10;
+    width: var(--sheet);
+    max-width: calc(100% - var(--spine) - var(--space-8));
+    max-height: calc(100% - var(--space-8));
+    overflow-y: auto;
+    padding: var(--space-4);
+}
+
+/* Encabezado de la hoja: el nombre grande y la "x" de cerrar a la derecha. */
+.sheet-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.sheet-meta {
+    margin: var(--space-1) 0 var(--space-4);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+/* Lo que no se deshace (eliminar) va al pie, separado por un filete. */
+.sheet-foot {
+    margin-top: var(--space-6);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
+/* En pantallas angostas todo se apila: lomo, mapa y ficha, uno debajo del otro. */
 @media (max-width: 900px) {
-    .app, .app.reading {
+    .app {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto 70vh auto;
         height: auto;
     }
 
-    .panel,
-    .panel-right {
-        border-left: 0;
-        border-right: 0;
-        border-bottom: 1px solid var(--border);
+    .sheet {
+        position: static;
+        width: auto;
+        max-width: none;
+        max-height: none;
+        margin: var(--space-4);
     }
-
-    .panel-right { border-top: 1px solid var(--border); }
 }
 
 /* ---------- controles ---------- */
@@ -206,6 +320,7 @@ input[type="color"]:hover { border-color: var(--text); }
 
 .btn {
     padding: var(--space-1) var(--space-3);
+    white-space: nowrap; /* "+ Ficha" no se parte en dos líneas */
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
@@ -219,7 +334,7 @@ input[type="color"]:hover { border-color: var(--text); }
 .btn:hover { background: var(--hover); border-color: var(--text); }
 .btn:active { background: var(--text); border-color: var(--text); color: var(--bg); }
 
-/* Modo activo de la barra (Navegar / Colocar pines). */
+/* Botón elegido de un grupo (herramienta de dibujo, tamaño del pin). */
 .btn.on,
 .btn.on:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
@@ -232,6 +347,9 @@ input[type="color"]:hover { border-color: var(--text); }
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-6); }
 
 .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: var(--space-6);
     height: var(--space-6);
     padding: 0;
@@ -266,18 +384,41 @@ input[type="color"]:hover { border-color: var(--text); }
     border-top: 1px solid var(--border);
 }
 
-/* El título desplegable se ve como los demás encabezados y cambia de color al pasar el mouse. */
+/* El título desplegable se ve como los demás encabezados y cambia de color al pasar el mouse.
+   El triángulo del navegador se reemplaza por un ángulo dibujado con dos bordes, que gira
+   al abrir la sección. */
 .fold summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    list-style: none;
     font-family: var(--font-title);
     font-size: var(--text-lg);
-    font-weight: 700;
+    font-weight: 500;
     cursor: pointer;
     border-radius: var(--radius);
     transition: color var(--fast);
 }
 
+.fold summary::-webkit-details-marker { display: none; }
+
+.fold summary::before {
+    content: "";
+    width: var(--space-2);
+    height: var(--space-2);
+    border-right: var(--focus) solid currentColor;
+    border-bottom: var(--focus) solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--fast);
+    flex: none;
+}
+
+.fold[open] summary::before { transform: rotate(45deg); }
 .fold summary:hover { color: var(--accent); }
 .fold[open] summary { margin-bottom: var(--space-2); }
+
+/* "Capas" lleva un encabezado con botón: mismo tamaño que los títulos desplegables. */
+.section-head h2 { font-size: var(--text-lg); }
 
 /* ---------- generador ---------- */
 
@@ -476,14 +617,18 @@ input[type="range"] {
 
 /* ---------- barra de colocación (modo "Colocar pines") ---------- */
 
+/* Flota arriba a la izquierda del mapa; con la hoja de la ficha abierta, se queda a su izquierda. */
 .placebar {
+    position: absolute;
+    top: var(--space-4);
+    left: var(--space-4);
+    max-width: calc(100% - var(--space-8));
+    z-index: 5;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
 }
 
 .placebar-label {
@@ -536,16 +681,30 @@ input[type="range"] {
     text-align: right;
 }
 
-/* ---------- barra de herramientas ---------- */
+/* ---------- tira de abajo (vista, etiquetas, ajuste, avisos) ---------- */
 
-.toolbar {
+.map-bar {
+    position: absolute;
+    left: var(--space-4);
+    bottom: var(--space-4);
+    z-index: 5;
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
+    gap: var(--space-3);
+    max-width: calc(100% - var(--space-8));
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+}
+
+/* Con la hoja de la ficha abierta, las barras se quedan a su izquierda (si no entran, bajan en
+   dos renglones) en vez de quedar tapadas. Solo en pantallas anchas: en las angostas la hoja va
+   debajo del mapa y no tapa nada. */
+@media (min-width: 901px) {
+    .app:has(.sheet) .map-bar,
+    .app:has(.sheet) .placebar {
+        max-width: calc(100% - var(--sheet) - var(--space-8) - var(--space-4));
+    }
 }
 
 .seg { display: flex; gap: var(--space-1); }
@@ -556,10 +715,10 @@ input[type="range"] {
 
 /* ---------- mapa ---------- */
 
+/* El visor ocupa toda la mesa; las barras y la hoja flotan encima. */
 .viewport {
-    position: relative;
-    flex: 1;
-    min-height: 0;
+    position: absolute;
+    inset: 0;
     overflow: hidden;
     background: var(--desk);
     touch-action: none;
@@ -593,25 +752,21 @@ input[type="range"] {
     pointer-events: none;
 }
 
-/* Leyenda de la vista, fija en la esquina del visor. */
+/* Leyenda de la vista: una hoja chica fija abajo a la derecha (a la izquierda va la tira). */
 .legend {
     position: absolute;
-    left: var(--space-3);
-    bottom: var(--space-3);
+    right: var(--space-4);
+    bottom: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
     min-width: calc(var(--space-8) * 6);
     padding: var(--space-2) var(--space-3);
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
     font-size: var(--text-sm);
     pointer-events: none;
 }
 
-.legend-title { font-family: var(--font-title); font-weight: 700; }
+.legend-title { font-family: var(--font-title); font-size: var(--text-md); font-weight: 500; }
 .legend-bar { height: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
 .legend-range { display: flex; justify-content: space-between; color: var(--muted); }
 .legend-item { display: flex; align-items: center; gap: var(--space-2); }
@@ -747,8 +902,19 @@ input[type="range"] {
     justify-content: center;
     padding: var(--space-6);
     text-align: center;
-    color: var(--muted);
     pointer-events: none;
+}
+
+/* El aviso de mapa vacío es una hoja más sobre la mesa. */
+.empty p {
+    max-width: calc(var(--space-8) * 14);
+    margin: 0;
+    padding: var(--space-4) var(--space-6);
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--lift);
 }
 
 /* ---------- pines ---------- */

@@ -11,18 +11,18 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 ## Probar
 
 1. "Cargar imagen" y elegí un PNG o SVG (por ejemplo, uno exportado desde Azgaar).
-2. Activá "Colocar pines" y hacé clic en el mapa.
-3. Completá la ficha del pin en el panel derecho.
+2. En el lomo (la columna oscura de la izquierda), activá "Colocar pines" y hacé clic en el mapa.
+3. Completá la ficha del pin, que aparece como una hoja sobre el mapa. La "x" la cierra.
 4. Creá otra capa, cambiale el color y ocultala con su casilla.
 5. Recargá la página: todo sigue ahí (se guarda en IndexedDB).
 6. "Exportar" genera un `.mundo.json` con todo, imagen incluida. "Importar" lo vuelve a cargar.
 7. En "Generar mapa", "Relieve" elige la forma de la tierra entre 10 plantillas con miniaturas (continente, continentes, pangea, archipiélago, isla volcánica, península, istmo, mediterráneo, atolón, fragmentado) o "Dibujo": con "Dibujar en el mapa" trazás a mano islas, lagos o bahías, cordilleras y zonas de un bioma elegido (desierto, selva, taiga...), y "Fidelidad al trazo" decide cuánto se respeta la línea (100 %: la sigue; 10 %: inventa casi todo), con vista previa. Con las otras plantillas, "Retoques" + "Retocar en el mapa" usa las mismas herramientas encima del mapa generado: agregar islas, borrar tierra con "Agua", sumar cordilleras o biomas. La "Goma" borra un trazo con un clic y "Deshacer" revierte el último cambio. "Todo al azar" crea un continente nuevo. Cambiá una sola semilla y volvé a "Generar" para ver qué controla cada etapa. El estilo "Celdas" muestra la grilla del generador.
-8. Con un mapa generado, "Ver celdas" en la barra: hacé clic en el mapa para ver terreno, altura, temperatura, humedad y ríos de esa celda.
-9. Shift + clic agrega o quita celdas y Shift + arrastrar las pinta. En el panel derecho podés cambiarles el terreno, subirlas, bajarlas, hacerlas tierra o agua, o restaurarlas. Los cambios se guardan y se mantienen al volver a generar con la misma semilla de continente.
-10. En "Reinos" (panel izquierdo) creá un reino; con celdas elegidas, asignalas desde el panel derecho. En la barra, "Vista" muestra el mapa por reinos, altura, temperatura o humedad, con su leyenda.
+8. Con un mapa generado, "Ver celdas" en el lomo: hacé clic en el mapa para ver terreno, altura, temperatura, humedad y ríos de esa celda.
+9. Shift + clic agrega o quita celdas y Shift + arrastrar las pinta. En su hoja podés cambiarles el terreno, subirlas, bajarlas, hacerlas tierra o agua, o restaurarlas. Los cambios se guardan y se mantienen al volver a generar con la misma semilla de continente.
+10. En "Reinos" (en el lomo) creá un reino; con celdas elegidas, asignalas desde su hoja. En la tira de abajo del mapa, "Vista" muestra el mapa por reinos, altura, temperatura o humedad, con su leyenda.
 11. Cada pin tiene un tipo con su ícono y un tamaño (chico, mediano, grande) que marca su importancia; la forma depende del grupo: insignia redonda para asentamientos, cuadrada para defensas y sin insignia para lugares menores. Tipos: ciudad, aldea, puerto, posada, fortaleza, torre, templo, bosque sagrado, cueva, mazmorra, mina, ruina, sitio abandonado, campo de batalla y otros. Con "Colocar pines" activo, la barra de íconos de arriba del mapa elige el tipo de los pines nuevos; en la ficha, "Cambiar" abre la grilla de tipos. Si un pin está dentro de un reino, su ficha permite marcarlo como capital: se dibuja con una estrella y un anillo doble.
 12. En "Generar mapa", sección "Poblados", "Poblar mapa" funda ciudades, puertos, aldeas, fortalezas en las fronteras, cuevas, ruinas y bosques sagrados donde tiene sentido (ríos, costas, tierra fértil), con nombres inventados y su propia semilla. Puede crear reinos nuevos alrededor de las capitales o usar los que ya tenés. Los lugares que edites o muevas se conservan al volver a poblar.
-13. Fichas del mundo: cada lugar, cada reino y cada personaje, facción o evento puede tener una ficha con texto. En la ficha de un pin o en "Fichas" (panel izquierdo), "Editar" permite escribir con formato simple: `# Título`, `**negrita**`, `*cursiva*`, `- lista`, `> cita` y enlaces `[[Otra ficha]]`. Tocar un enlace abre esa ficha y, si es un lugar o un reino, centra el mapa en él; un enlace a un nombre que todavía no tiene ficha la crea. Si renombrás un lugar, un reino o una ficha, la app ofrece cambiar los enlaces que usaban el nombre viejo. Cada ficha muestra qué otras la mencionan. Si borrás un lugar, su ficha se conserva como ficha suelta.
+13. Fichas del mundo: cada lugar, cada reino y cada personaje, facción o evento puede tener una ficha con texto. En la ficha de un pin o en "Fichas" (en el lomo), "Editar" permite escribir con formato simple: `# Título`, `**negrita**`, `*cursiva*`, `- lista`, `> cita` y enlaces `[[Otra ficha]]`. Tocar un enlace abre esa ficha y, si es un lugar o un reino, centra el mapa en él; un enlace a un nombre que todavía no tiene ficha la crea. Si renombrás un lugar, un reino o una ficha, la app ofrece cambiar los enlaces que usaban el nombre viejo. Cada ficha muestra qué otras la mencionan. Si borrás un lugar, su ficha se conserva como ficha suelta.
 
 ## Pruebas automáticas
 
@@ -38,7 +38,8 @@ Cubren el generador (misma semilla, mismo mundo; porcentaje de tierra en las 10 
 
 - `Models/`: los datos (`MapProject`, `MapLayer`, `MapPin`) y el formato del archivo exportado.
 - `Services/ProjectService.cs`: guarda el proyecto abierto y se encarga de persistir, exportar e importar.
-- `Components/MapEditor.razor`: la interfaz principal (paneles, capas, ficha, pines).
+- `Components/MapEditor.razor`: la interfaz principal (lomo, mapa, hoja de la ficha, pines).
+- `Components/UiIcon.razor`: los íconos de la interfaz (modos, cerrar, subir, bajar), SVG propios.
 - `Components/GeneratorPanel.razor`: el panel "Generar mapa".
 - `Components/CellInfo.razor` y `CellPanel.razor`: la ficha de las celdas seleccionadas y las herramientas para editarlas.
 - `Components/RegionPanel.razor`: la lista de reinos.
@@ -59,6 +60,7 @@ Decisiones de diseño que conviene entender:
 - Los pines guardan su posición **normalizada** (0 a 1), no en píxeles.
 - El zoom y el arrastre viven en JavaScript para que sean fluidos; C# solo recibe los eventos importantes.
 - La imagen se guarda aparte del proyecto porque pesa mucho más.
+- Estilo "atlas encuadernado": el lomo oscuro redefine los mismos tokens de color que usan las hojas claras (variables CSS con alcance), así cada botón y campo se pinta solo según dónde está.
 - El zoom máximo depende de la imagen: 2x para PNG y JPG (más allá se ven borrosos) y 16x para SVG, que es vectorial y no pierde nitidez. Para mapas de Azgaar conviene exportar en SVG.
 - El texto de las fichas nunca se inserta como HTML: el traductor lo separa en bloques y trozos, y Razor los escribe como texto. Así nada de lo que se escriba en una ficha puede ejecutarse en la página.
 

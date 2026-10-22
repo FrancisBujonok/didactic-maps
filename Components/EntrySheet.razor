@@ -1,11 +1,16 @@
 @inject ProjectService Store
 @inject IJSRuntime JS
 
-@* Ficha de un reino o de una ficha suelta, en el panel derecho. (La de un pin la arma el
+@* Ficha de un reino o de una ficha suelta, en la hoja flotante. (La de un pin la arma el
    editor, con sus datos de lugar, y usa el mismo EntryText para el texto.) *@
 @if (Target.Kind == WikiTargetKind.Region && Region is { } region)
 {
-    <h2>@region.Name</h2>
+    <div class="sheet-head">
+        <h2>@region.Name</h2>
+        <button type="button" class="icon-btn" aria-label="Cerrar la ficha" title="Cerrar"
+                @onclick="OnClose"><UiIcon Name="close" /></button>
+    </div>
+    <p class="sheet-meta">Reino · @region.Cells.Count celdas</p>
 
     <label class="field">
         <span>Nombre</span>
@@ -26,20 +31,21 @@
         }
     </div>
 
-    <p class="hint">
-        @region.Cells.Count celdas. El color se cambia en la lista "Reinos" del panel izquierdo.
-    </p>
-
     <div class="btn-row">
         <button type="button" class="btn small" @onclick="() => OnShow.InvokeAsync(Target)">Ver en el mapa</button>
-        <button type="button" class="btn small" @onclick="OnClose">Cerrar</button>
     </div>
+    <p class="hint">El color se cambia en la lista "Reinos" del lomo.</p>
 
     <EntryText Target="Target" OnOpen="OnOpen" />
 }
 else if (Target.Kind == WikiTargetKind.Entry && Store.EntryOf(Target) is { } entry)
 {
-    <h2>@entry.Title</h2>
+    <div class="sheet-head">
+        <h2>@entry.Title</h2>
+        <button type="button" class="icon-btn" aria-label="Cerrar la ficha" title="Cerrar"
+                @onclick="OnClose"><UiIcon Name="close" /></button>
+    </div>
+    <p class="sheet-meta">@entry.Category</p>
 
     <label class="field">
         <span>Nombre</span>
@@ -56,12 +62,12 @@ else if (Target.Kind == WikiTargetKind.Entry && Store.EntryOf(Target) is { } ent
         </select>
     </label>
 
-    <div class="btn-row">
-        <button type="button" class="btn small" @onclick="OnClose">Cerrar</button>
+    <EntryText Target="Target" OnOpen="OnOpen" />
+
+    @* Al final, separado: la acción que no se deshace. *@
+    <div class="sheet-foot">
         <button type="button" class="btn small danger" @onclick="() => RemoveAsync(entry)">Eliminar ficha</button>
     </div>
-
-    <EntryText Target="Target" OnOpen="OnOpen" />
 }
 
 @code {
