@@ -1,0 +1,43 @@
+@inject ProjectService Store
+@inject IJSRuntime JS
+
+@* Campo para el nombre de un lugar, un reino o una ficha. Se usa como un input con
+   @bind-Value, y además, al terminar de renombrar, ofrece arreglar los [[enlaces]] de las
+   fichas que usaban el nombre viejo y quedaron sin destino. *@
+<input type="text" @attributes="Attributes" value="@Value"
+       @oninput="OnInputAsync" @onfocus="Remember" @onchange="OfferLinkRenameAsync" />
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>Cualquier otro atributo (class, aria-label...) pasa tal cual al input.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? Attributes { get; set; }
+
+    // Nombre al entrar al campo. "change" llega al salir del campo (o con Enter), una sola vez,
+    // con el nombre ya cambiado letra por letra por "input": el viejo hay que recordarlo antes.
+    private string? _before;
+
+    private void Remember() => _before = Value;
+
+    private Task OnInputAsync(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    private async Task OfferLinkRenameAsync()
+    {
+        var before = _before;
+        _before = Value; // si sigue en el campo y vuelve a cambiarlo, se compara con este
+        if (before is null || Value.Trim().Length == 0 ||
+            string.Equals(before.Trim(), Value.Trim(), StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var entries = Store.EntriesWithBrokenLinksTo(before);
+        if (entries == 0) return;
+
+        var which = entries == 1 ? "1 ficha enlaza" : $"{entries} fichas enlazan";
+        if (await JS.InvokeAsync<bool>("confirm",
+                $"{which} a \"{before.Trim()}\". ¿Cambiar esos enlaces a \"{Value.Trim()}\"?"))
+        {
+            Store.RenameLinks(before, Value);
+        }
+    }
+}

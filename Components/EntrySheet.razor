@@ -9,7 +9,7 @@
 
     <label class="field">
         <span>Nombre</span>
-        <input type="text" @bind="region.Name" @bind:event="oninput" @bind:after="OnRegionChangedAsync" />
+        <NameInput @bind-Value="region.Name" @bind-Value:after="OnRegionChangedAsync" />
     </label>
 
     <div class="field">
@@ -43,7 +43,7 @@ else if (Target.Kind == WikiTargetKind.Entry && Store.EntryOf(Target) is { } ent
 
     <label class="field">
         <span>Nombre</span>
-        <input type="text" @bind="entry.Title" @bind:event="oninput" @bind:after="Store.WikiEdited" />
+        <NameInput @bind-Value="entry.Title" @bind-Value:after="Store.WikiEdited" />
     </label>
 
     <label class="field">

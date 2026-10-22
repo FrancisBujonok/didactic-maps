@@ -24,8 +24,8 @@
                 <div class="layer" @key="region.Id">
                     <input type="color" title="Color del reino" aria-label="Color de @region.Name"
                            @bind="region.Color" @bind:after="OnColorChangedAsync" />
-                    <input type="text" class="layer-name" aria-label="Nombre del reino"
-                           @bind="region.Name" @bind:event="oninput" @bind:after="OnNameChangedAsync" />
+                    <NameInput class="layer-name" aria-label="Nombre del reino"
+                           @bind-Value="region.Name" @bind-Value:after="OnNameChangedAsync" />
                     <span class="count" title="Celdas del reino">@region.Cells.Count</span>
                     <button class="icon-btn" title="Eliminar reino" aria-label="Eliminar @region.Name"
                             @onclick="() => RemoveAsync(region)">x</button>

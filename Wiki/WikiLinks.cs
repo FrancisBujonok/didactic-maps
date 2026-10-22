@@ -71,6 +71,62 @@ public static class WikiLinks
     }
 
     /// <summary>
+    /// Cambia los enlaces a oldName ([[viejo]] y [[viejo|texto]]) por newName, sin tocar nada
+    /// más: el texto propio de un enlace se conserva. Compara como Resolve (sin distinguir
+    /// mayúsculas ni espacios de más). En count devuelve cuántos enlaces cambió.
+    ///
+    /// Recorre el texto buscando "[[" y el "]]" siguiente con las mismas reglas que WikiMarkup:
+    /// un enlace no cruza de una línea a otra y su nombre no puede estar vacío.
+    /// </summary>
+    public static string RenameLinks(string? text, string oldName, string newName, out int count)
+    {
+        count = 0;
+        if (string.IsNullOrEmpty(text)) return text ?? "";
+
+        oldName = oldName.Trim();
+        newName = newName.Trim();
+        var result = new System.Text.StringBuilder();
+        var i = 0; // hasta dónde ya se copió el texto al resultado
+
+        while (true)
+        {
+            var start = text.IndexOf("[[", i, StringComparison.Ordinal);
+            var end = start < 0 ? -1 : text.IndexOf("]]", start + 2, StringComparison.Ordinal);
+            if (end < 0) break;
+
+            var inner = text[(start + 2)..end];
+            var bar = inner.IndexOf('|');
+            var target = (bar >= 0 ? inner[..bar] : inner).Trim();
+
+            if (inner.Contains('\n') || target.Length == 0 ||
+                !string.Equals(target, oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                // No es un enlace a oldName: se copia el primer "[" y se sigue buscando desde ahí.
+                result.Append(text, i, start + 1 - i);
+                i = start + 1;
+                continue;
+            }
+
+            result.Append(text, i, start - i)
+                  .Append("[[").Append(newName)
+                  .Append(bar >= 0 ? inner[bar..] : "") // "|texto propio", tal cual
+                  .Append("]]");
+            i = end + 2;
+            count++;
+        }
+
+        result.Append(text, i, text.Length - i);
+        return result.ToString();
+    }
+
+    /// <summary>Cuántos enlaces del texto apuntan a ese nombre.</summary>
+    public static int CountLinksTo(string? text, string name)
+    {
+        RenameLinks(text, name, name, out var count);
+        return count;
+    }
+
+    /// <summary>
     /// Fichas que enlazan a esta ("Mencionada en"). No se guardan: se calculan leyendo los
     /// enlaces de cada ficha, así nunca quedan desactualizadas cuando se edita un texto.
     /// </summary>

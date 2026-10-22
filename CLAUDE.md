@@ -33,8 +33,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `Components/KindPicker.razor`: selector visual de tipo, con `Value` / `ValueChanged` (sirve con `@bind-Value`). `Compact` = solo íconos en fila (barra de colocación); sin `Compact` = grilla de dos columnas con ícono y nombre (ficha).
 - `Components/RegionPanel.razor`: sección "Reinos" del panel izquierdo (crear, renombrar, color, borrar). Las celdas se asignan desde `CellPanel` ("Reino" + "Asignar").
 - `Models/WikiEntry.cs`: ficha del mundo (`Title`, `Category`, `Text`, `PinId?`, `RegionId?`, lista `Categories`). Se guardan en `MapProject.Entries`.
-- `Wiki/WikiMarkup.cs`: traductor del formato simple (`Parse` en bloques `WikiBlock` con líneas de trozos `WikiInline`, `ParseLine`, `LinksIn`). `Wiki/WikiLinks.cs`: `WikiTarget` (Pin, Region o Entry + Id), `EntryOf`, `TargetOf`, `Exists`, `NameOf`, `Resolve`, `MentionsOf`.
+- `Wiki/WikiMarkup.cs`: traductor del formato simple (`Parse` en bloques `WikiBlock` con líneas de trozos `WikiInline`, `ParseLine`, `LinksIn`). `Wiki/WikiLinks.cs`: `WikiTarget` (Pin, Region o Entry + Id), `EntryOf`, `TargetOf`, `Exists`, `NameOf`, `Resolve`, `MentionsOf`, `RenameLinks`, `CountLinksTo`.
 - `Components/WikiText.razor` (dibuja el texto con enlaces), `EntryText.razor` (leer, editar, "Mencionada en"), `EntrySheet.razor` (ficha de reino o suelta en el panel derecho), `WikiList.razor` (sección "Fichas" del panel izquierdo: búsqueda, "+ Ficha", grupos por categoría).
+- `Components/NameInput.razor`: campo de nombre (pin, reino en la lista y en su ficha, ficha suelta) que se usa con `@bind-Value` y, al salir del campo, ofrece cambiar los [[enlaces]] rotos al nombre viejo. Los demás atributos pasan al input (`CaptureUnmatchedValues`).
 - `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda, estilo (`MapStyle`: Pintado o Celdas) y `Retouches` (los dibujos valen como retoques sobre otras plantillas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
   - `Rng.cs` (Mulberry32 con semilla), `PerlinNoise.cs` (ruido y fBm).
@@ -49,7 +50,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
 - `wwwroot/js/files.js`: selector de archivos y descarga.
 - `wwwroot/css/app.css`: estilos.
-- `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`, `WikiMarkupTests`, `WikiLinksTests`.
+- `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`, `WikiMarkupTests`, `WikiLinksTests`, `RenameLinksTests`.
 
 ## Decisiones
 
@@ -124,6 +125,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Con una ficha abierta, `.app.reading` ensancha el panel derecho (280 a 400 px); bajo 900 px los paneles siguen apilados.
   - La lista de fichas muestra las que existen; al buscar, también lugares y reinos sin texto ("(sin texto)") para poder empezarlos. Se suscribe a `WikiChanged` y `StatusChanged`.
   - Proyectos viejos: la `Description` de cada pin pasa a su ficha en `NormalizeEntries` (si ya tenía ficha, va arriba del texto) y queda vacía. El dato guardado se actualiza en el próximo guardado; hasta entonces cada carga repite la migración sin duplicar.
+  - Renombrar: `NameInput` recuerda el nombre al entrar al campo (`focus`) y al salir (`change`, que llega una vez, al salir o con Enter) pregunta si hay fichas con enlaces al nombre viejo que quedaron sin destino (`EntriesWithBrokenLinksTo`). Si otra cosa todavía se llama así, sus enlaces siguen andando y no se pregunta; tampoco si solo cambian mayúsculas o si el nombre nuevo está vacío. `RenameLinks` cambia el nombre y conserva el texto propio (`[[viejo|texto]]` pasa a `[[nuevo|texto]]`), con las mismas reglas que el traductor (no cruza líneas, nombre no vacío). Nombres parecidos ("Corthal Viejo") no se tocan.
 
 - Poblados ("Poblar mapa", sección del panel del generador):
   - Semilla propia (`SettlementSeed`), cantidad (`SettlementDensity`: pocos, normal, muchos) y reinos (`KingdomCount`: 0 = usar los actuales, 2 a 8 = crear nuevos). No cambian la imagen: se aplican sobre el mundo en memoria.
@@ -176,14 +178,16 @@ Resuelto:
 
 - 2026-10-22: fichas del mundo (hoja de ruta, punto 2). Probado en la app: buscar un lugar sin texto y abrir su ficha, escribir con títulos, negrita, lista, cita y enlaces (uno con texto propio y uno a un nombre sin ficha), el texto sobrevive a recargar, seguir el enlace a un reino (ficha con capital y "Mencionada en", mapa centrado), volver por la mención, crear una ficha desde un enlace sin ficha, borrar un pin con texto (su ficha queda suelta y los enlaces siguen andando), y migración de la descripción de un proyecto viejo. 64 pruebas (23 nuevas del traductor y los enlaces). Se corrigieron dos errores encontrados en la prueba: el "*" suelto que abría cursiva y el espacio antes de la puntuación después de un enlace.
 
+- 2026-10-22: renombrar arregla los enlaces (pedido por el autor). Probado en la app: renombrar un pin, una ficha suelta (rechazando: el enlace queda sin ficha) y un reino desde la lista (el texto propio del enlace se conserva), sin aviso al cambiar solo mayúsculas, todo guardado. 70 pruebas (6 nuevas).
+
 Pendiente:
 
 - Próximo paso posible: importar mapa de alturas (opción C).
 - Lagos dibujados muy hondos (casi 1900 m en la prueba): el agua tiene el doble de fuerza y llega al fondo de la escala. Si molesta, limitar su profundidad.
 - Próximo paso posible: rutas entre ciudades (caminos por el terreno más barato, como los reinos); deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo.
 - Con muchos lugares, los nombres medianos todavía se pisan en ventanas chicas. Mejora posible: correr las etiquetas que chocan o generalizar también los medianos a más distancia.
+- Ejercicio del autor (renombrar, nuevo): en `RenameLinksTests`, dos pruebas más: un enlace partido en dos líneas (`"[[Cor\nthal]]"` en C#) no se toca, y `[[Corthal|]]` (texto propio vacío) queda como `[[Puerto Gris|]]`. Pensar antes qué debería pasar y después correrlas.
 - Ejercicio del autor (fichas, nuevo): `~~tachado~~` en el formato. Primero la prueba en `WikiMarkupTests` (que falle), después `Strike` en `WikiInline`, el signo en `ParseLine` (mismas reglas que `**`), y `<s>` en `WikiText.Span`.
-- Fichas: renombrar un lugar, un reino o una ficha deja sus [[enlaces]] viejos sin ficha. Mejora posible: al renombrar (al salir del campo, no en cada tecla), ofrecer cambiar los enlaces del texto de todas las fichas.
 - Ejercicio del autor (pruebas, nuevo): en `SketchesTests`, una prueba para `Sketches.Length` (una "L" de 3 + 4 mide 7) y otra para `DistanceToPolyline`; en un archivo nuevo `MeshTests.cs`, que `FindCell` con el centro de una celda devuelva esa celda (`[Theory]` con varias celdas, malla de `new Mesh(2000, 1250, 18, 42)`).
 - Ejercicio del autor (nuevo): que la goma diga qué borró ("Se borró una cordillera."). `EraseSketchAt` devuelve `bool`; cambiarlo para que devuelva el nombre de lo borrado (o null si no tocó nada) y usarlo en `OnSketchErase` de `MapEditor`.
 - Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.

@@ -639,6 +639,23 @@ public class ProjectService
         WikiEdited();
     }
 
+    /// <summary>
+    /// Después de renombrar algo: cuántas fichas tienen enlaces al nombre viejo que quedaron
+    /// sin destino. Si otra cosa todavía se llama así, sus enlaces siguen andando: 0.
+    /// </summary>
+    public int EntriesWithBrokenLinksTo(string oldName) =>
+        string.IsNullOrWhiteSpace(oldName) || Resolve(oldName) is not null
+            ? 0
+            : Project.Entries.Count(e => WikiLinks.CountLinksTo(e.Text, oldName) > 0);
+
+    /// <summary>Cambia en todas las fichas los enlaces al nombre viejo por el nuevo.</summary>
+    public void RenameLinks(string oldName, string newName)
+    {
+        foreach (var entry in Project.Entries)
+            entry.Text = WikiLinks.RenameLinks(entry.Text, oldName, newName, out _);
+        WikiEdited();
+    }
+
     /// <summary>Avisa que cambió el título o la categoría de una ficha suelta y la guarda.</summary>
     public void WikiEdited()
     {

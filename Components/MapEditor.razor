@@ -317,7 +317,7 @@
 
             <label class="field">
                 <span>Título</span>
-                <input type="text" @bind="selectedPin.Title" @bind:event="oninput" @bind:after="() => OnPinChanged(selectedPin)" />
+                <NameInput @bind-Value="selectedPin.Title" @bind-Value:after="() => OnPinChanged(selectedPin)" />
             </label>
 
             @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
