@@ -32,6 +32,9 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `wwwroot/js/preview.js`: `toDataUrl(ancho, alto, rgba)`: pinta en un canvas los píxeles que calcula C# y devuelve la imagen.
 - `Components/KindPicker.razor`: selector visual de tipo, con `Value` / `ValueChanged` (sirve con `@bind-Value`). `Compact` = solo íconos en fila (barra de colocación); sin `Compact` = grilla de dos columnas con ícono y nombre (ficha).
 - `Components/RegionPanel.razor`: sección "Reinos" del panel izquierdo (crear, renombrar, color, borrar). Las celdas se asignan desde `CellPanel` ("Reino" + "Asignar").
+- `Models/WikiEntry.cs`: ficha del mundo (`Title`, `Category`, `Text`, `PinId?`, `RegionId?`, lista `Categories`). Se guardan en `MapProject.Entries`.
+- `Wiki/WikiMarkup.cs`: traductor del formato simple (`Parse` en bloques `WikiBlock` con líneas de trozos `WikiInline`, `ParseLine`, `LinksIn`). `Wiki/WikiLinks.cs`: `WikiTarget` (Pin, Region o Entry + Id), `EntryOf`, `TargetOf`, `Exists`, `NameOf`, `Resolve`, `MentionsOf`.
+- `Components/WikiText.razor` (dibuja el texto con enlaces), `EntryText.razor` (leer, editar, "Mencionada en"), `EntrySheet.razor` (ficha de reino o suelta en el panel derecho), `WikiList.razor` (sección "Fichas" del panel izquierdo: búsqueda, "+ Ficha", grupos por categoría).
 - `Models/GeneratorSettings.cs`: las cuatro semillas, porcentaje de tierra, tamaño de celda, estilo (`MapStyle`: Pintado o Celdas) y `Retouches` (los dibujos valen como retoques sobre otras plantillas). Se guarda en `MapProject.Generator` (null si la imagen vino de un archivo).
 - `Generation/`: el generador, en orden de ejecución:
   - `Rng.cs` (Mulberry32 con semilla), `PerlinNoise.cs` (ruido y fBm).
@@ -42,11 +45,11 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - `EditStage.cs`: aplica las ediciones a mano (alturas después del continente, biomas al final).
   - `SvgMapRenderer.cs`: dibujo en SVG (sus ayudas de costa y color son `internal` para reutilizarlas). `MapGenerator.cs`: orquesta todo, `Draw` y `ToDataUrl`.
   - `ThematicRenderer.cs`: vistas (`MapView`: Terreno, Reinos, Altura, Temperatura, Humedad), leyendas (`ColorScale`), dueño de cada celda (`Owners`) y ubicación de nombres de reino (`Labels`).
-- `wwwroot/js/mapview.js`: zoom, pan, clics y arrastre de pines.
+- `wwwroot/js/mapview.js`: zoom, pan, clics y arrastre de pines; `centerOn(x, y)` centra el mapa en un punto normalizado (al abrir la ficha de un lugar o reino).
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
 - `wwwroot/js/files.js`: selector de archivos y descarga.
 - `wwwroot/css/app.css`: estilos.
-- `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`.
+- `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`, `WikiMarkupTests`, `WikiLinksTests`.
 
 ## Decisiones
 
@@ -109,6 +112,19 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Cambiar el tipo cambia también el tamaño si todavía era el del tipo anterior (mismo criterio que el título).
   - Generalización: con el mapa alejado (menos del doble de la escala de ajuste) se ocultan los nombres de los lugares chicos (`.viewport.far`, clase que pone `mapview.js`); aparecen al acercarse.
 
+- Fichas (wiki del mundo, decidido por el autor: mapa y entradas sueltas, enlaces en el texto, panel junto al mapa, formato simple):
+  - Una ficha puede ser de un pin, de un reino o suelta (personaje, facción, evento...). La vinculada no tiene nombre propio: usa el del pin o el reino (`WikiLinks.NameOf`), así renombrar el lugar renombra la ficha. `Title` guarda el último nombre conocido por si el lugar desaparece.
+  - Un pin o un reino reciben su `WikiEntry` recién cuando se les escribe algo, y la pierden si el texto queda vacío (`ProjectService.SetEntryText`). Escribir en la ficha de un lugar generado lo adopta (`Generated = false`), como editarlo o moverlo.
+  - Borrar un pin, una capa con pines, un reino, los lugares generados o reemplazar los reinos al poblar: sus fichas pasan a ser sueltas con su nombre (`ReleaseEntries`). El texto del autor nunca se pierde por borrar un lugar; el aviso de borrar un pin lo dice.
+  - Formato: `# ## ###` títulos, `**negrita**`, `*cursiva*`, `- ` o `* ` lista, `>` cita, `[[Nombre]]` y `[[Nombre|texto]]`. Un signo abre formato solo pegado a la palabra siguiente y cierra pegado a la anterior, con pareja en la misma línea ("5 * 3" queda como texto; lo encontró una prueba). Las líneas seguidas de un párrafo van con salto de línea (no se juntan como en Markdown).
+  - Seguridad: el traductor devuelve bloques y trozos, no HTML; `WikiText` los dibuja con Razor, que escapa todo. Probado: `<img onerror>` en una ficha se muestra como texto y no se ejecuta. No usar `MarkupString` con texto del autor.
+  - Templates de Razor de una sola línea en `WikiText`: con saltos de línea dentro del template, el espacio en blanco del código aparecía en el texto ("Corlis ." en lugar de "Corlis.").
+  - Enlaces: se resuelven por nombre sin distinguir mayúsculas ni espacios de más; con nombres repetidos gana ficha suelta, después reino, después pin. Un nombre sin ficha se muestra punteado y tenue; al tocarlo se crea una ficha suelta (categoría "Otro") y se abre para escribir. "Mencionada en" no se guarda: se calcula leyendo los enlaces de todas las fichas.
+  - Abrir la ficha de un lugar lo selecciona como un clic en su pin (y muestra su capa si estaba oculta); abrir un reino o una ficha suelta usa `_sheet` en `MapEditor`. Lugares y reinos centran el mapa (`centerOn`, con zoom al doble del ajuste); el reino se centra en su capital o en el punto de su nombre. Un clic en el mapa cierra la ficha abierta.
+  - Con una ficha abierta, `.app.reading` ensancha el panel derecho (280 a 400 px); bajo 900 px los paneles siguen apilados.
+  - La lista de fichas muestra las que existen; al buscar, también lugares y reinos sin texto ("(sin texto)") para poder empezarlos. Se suscribe a `WikiChanged` y `StatusChanged`.
+  - Proyectos viejos: la `Description` de cada pin pasa a su ficha en `NormalizeEntries` (si ya tenía ficha, va arriba del texto) y queda vacía. El dato guardado se actualiza en el próximo guardado; hasta entonces cada carga repite la migración sin duplicar.
+
 - Poblados ("Poblar mapa", sección del panel del generador):
   - Semilla propia (`SettlementSeed`), cantidad (`SettlementDensity`: pocos, normal, muchos) y reinos (`KingdomCount`: 0 = usar los actuales, 2 a 8 = crear nuevos). No cambian la imagen: se aplican sobre el mundo en memoria.
   - Puntaje de celda: fertilidad del bioma + río (más si es grande) + lago + costa - altura, más una variación de la semilla de hasta 0,35. Ciudades con puntaje 0,9 o más, separadas 230/175/135 px según la cantidad; una aldea por ciudad (15 % posadas); ciudades costeras son puertos.
@@ -118,7 +134,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Los pines generados van a la capa "Poblados" (sepia #6B4E3D) con `Generated = true`. Editarlos en la ficha, moverlos o hacerlos capital los "adopta" (`Generated = false`). Volver a poblar borra solo los generados; generar un mapa con otra malla también.
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado). `GeneratorTests.KnownMaps_DoNotChange` lo detecta con huellas (SHA-256 de altura redondeada a 9 decimales, bioma y río de cada celda) de tres mapas. Si el cambio es a propósito, se actualiza la huella y se anota acá.
 
-## Estado actual (2026-10-20)
+## Estado actual (2026-10-22)
 
 Compila sin advertencias y funciona (pines, arrastre, zoom, guardado probados).
 
@@ -158,12 +174,16 @@ Resuelto:
 
 - 2026-10-20: proyecto de pruebas xUnit (pedido por el autor, primero en la lista de próximos pasos). 41 pruebas, todas pasan en unos 2 s. Comprobado que fallan cuando deben: con `AltitudeCooling` en 0,41 fallan las 3 huellas, y con el alcance de los retoques en 1000 px falla la prueba de celdas lejanas.
 
+- 2026-10-22: fichas del mundo (hoja de ruta, punto 2). Probado en la app: buscar un lugar sin texto y abrir su ficha, escribir con títulos, negrita, lista, cita y enlaces (uno con texto propio y uno a un nombre sin ficha), el texto sobrevive a recargar, seguir el enlace a un reino (ficha con capital y "Mencionada en", mapa centrado), volver por la mención, crear una ficha desde un enlace sin ficha, borrar un pin con texto (su ficha queda suelta y los enlaces siguen andando), y migración de la descripción de un proyecto viejo. 64 pruebas (23 nuevas del traductor y los enlaces). Se corrigieron dos errores encontrados en la prueba: el "*" suelto que abría cursiva y el espacio antes de la puntuación después de un enlace.
+
 Pendiente:
 
 - Próximo paso posible: importar mapa de alturas (opción C).
 - Lagos dibujados muy hondos (casi 1900 m en la prueba): el agua tiene el doble de fuerza y llega al fondo de la escala. Si molesta, limitar su profundidad.
 - Próximo paso posible: rutas entre ciudades (caminos por el terreno más barato, como los reinos); deshacer la última edición; fronteras de reino suavizadas en el estilo Pintado; mostrar en la lista de reinos su capital y cantidad de pines; filtrar pines por tipo.
 - Con muchos lugares, los nombres medianos todavía se pisan en ventanas chicas. Mejora posible: correr las etiquetas que chocan o generalizar también los medianos a más distancia.
+- Ejercicio del autor (fichas, nuevo): `~~tachado~~` en el formato. Primero la prueba en `WikiMarkupTests` (que falle), después `Strike` en `WikiInline`, el signo en `ParseLine` (mismas reglas que `**`), y `<s>` en `WikiText.Span`.
+- Fichas: renombrar un lugar, un reino o una ficha deja sus [[enlaces]] viejos sin ficha. Mejora posible: al renombrar (al salir del campo, no en cada tecla), ofrecer cambiar los enlaces del texto de todas las fichas.
 - Ejercicio del autor (pruebas, nuevo): en `SketchesTests`, una prueba para `Sketches.Length` (una "L" de 3 + 4 mide 7) y otra para `DistanceToPolyline`; en un archivo nuevo `MeshTests.cs`, que `FindCell` con el centro de una celda devuelva esa celda (`[Theory]` con varias celdas, malla de `new Mesh(2000, 1250, 18, 42)`).
 - Ejercicio del autor (nuevo): que la goma diga qué borró ("Se borró una cordillera."). `EraseSketchAt` devuelve `bool`; cambiarlo para que devuelva el nombre de lo borrado (o null si no tocó nada) y usarlo en `OnSketchErase` de `MapEditor`.
 - Ejercicios del autor: "Distancia a la costa" en `CellInfo.razor`; botón "Seleccionar todo este terreno" en `CellPanel.razor` (necesita un `EventCallback` nuevo hacia `MapEditor`); vista "Ríos" o "Distancia a la costa" en `ThematicRenderer` (enum, nombre en `Views`, color en `RenderData`, leyenda en `Legend`); tipo de pin nuevo con ícono propio (por ejemplo "Faro") en `KindGroups` y `PinIcon`.
@@ -186,7 +206,7 @@ Paleta A (contrastes AA verificados; al agregar un color nuevo, calcular su rati
 
 0. Corregir los problemas de la revisión inicial. Falta: decidir lo del Blob (los íconos de pin se hicieron el 2026-10-19).
 1. Importador de Azgaar (CSV/GeoJSON de ciudades a pines). Falta el archivo de ejemplo en `/ejemplos`.
-2. Vincular pines con fichas de un wiki del mundo.
+2. Vincular pines con fichas de un wiki del mundo. Primera versión hecha el 2026-10-22 (ver "Fichas").
 3. Generador de mapas por etapas (continente, clima, ríos, biomas), cada etapa con su semilla. Primera versión hecha el 2026-10-19; quedan mejoras (ver Pendiente).
 
 ## Forma de trabajo

@@ -1,0 +1,100 @@
+@inject ProjectService Store
+@inject IJSRuntime JS
+
+@* Ficha de un reino o de una ficha suelta, en el panel derecho. (La de un pin la arma el
+   editor, con sus datos de lugar, y usa el mismo EntryText para el texto.) *@
+@if (Target.Kind == WikiTargetKind.Region && Region is { } region)
+{
+    <h2>@region.Name</h2>
+
+    <label class="field">
+        <span>Nombre</span>
+        <input type="text" @bind="region.Name" @bind:event="oninput" @bind:after="OnRegionChangedAsync" />
+    </label>
+
+    <div class="field">
+        <span>Capital</span>
+        @if (region.CapitalPinId is { } capital && Store.Exists(WikiTarget.Pin(capital)))
+        {
+            <p class="field-value">
+                <button type="button" class="wiki-link" @onclick="() => OnOpen.InvokeAsync(WikiTarget.Pin(capital))">@Store.NameOf(WikiTarget.Pin(capital))</button>
+            </p>
+        }
+        else
+        {
+            <p class="field-value muted">Sin capital. Se elige en la ficha de un lugar del reino.</p>
+        }
+    </div>
+
+    <p class="hint">
+        @region.Cells.Count celdas. El color se cambia en la lista "Reinos" del panel izquierdo.
+    </p>
+
+    <div class="btn-row">
+        <button type="button" class="btn small" @onclick="() => OnShow.InvokeAsync(Target)">Ver en el mapa</button>
+        <button type="button" class="btn small" @onclick="OnClose">Cerrar</button>
+    </div>
+
+    <EntryText Target="Target" OnOpen="OnOpen" />
+}
+else if (Target.Kind == WikiTargetKind.Entry && Store.EntryOf(Target) is { } entry)
+{
+    <h2>@entry.Title</h2>
+
+    <label class="field">
+        <span>Nombre</span>
+        <input type="text" @bind="entry.Title" @bind:event="oninput" @bind:after="Store.WikiEdited" />
+    </label>
+
+    <label class="field">
+        <span>Categoría</span>
+        <select @bind="entry.Category" @bind:after="Store.WikiEdited">
+            @foreach (var category in WikiEntry.Categories)
+            {
+                <option value="@category">@category</option>
+            }
+        </select>
+    </label>
+
+    <div class="btn-row">
+        <button type="button" class="btn small" @onclick="OnClose">Cerrar</button>
+        <button type="button" class="btn small danger" @onclick="() => RemoveAsync(entry)">Eliminar ficha</button>
+    </div>
+
+    <EntryText Target="Target" OnOpen="OnOpen" />
+}
+
+@code {
+    [Parameter, EditorRequired] public WikiTarget Target { get; set; }
+
+    /// <summary>Abrir otra ficha (un enlace, la capital, una mención).</summary>
+    [Parameter] public EventCallback<WikiTarget> OnOpen { get; set; }
+
+    /// <summary>Centrar el mapa en el reino.</summary>
+    [Parameter] public EventCallback<WikiTarget> OnShow { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Se dispara al renombrar un reino, para redibujar su nombre en el mapa.</summary>
+    [Parameter] public EventCallback OnRegionChanged { get; set; }
+
+    private Region? Region => Store.Project.Regions.FirstOrDefault(r => r.Id == Target.Id);
+
+    private async Task OnRegionChangedAsync()
+    {
+        Store.RegionsChanged();
+        Store.WikiEdited();
+        await OnRegionChanged.InvokeAsync();
+    }
+
+    private async Task RemoveAsync(WikiEntry entry)
+    {
+        var mentions = Store.MentionsOf(Target).Count;
+        var warning = mentions > 0 ? $" La mencionan {mentions} fichas: esos enlaces van a quedar sin ficha." : "";
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la ficha \"{entry.Title}\"?{warning}"))
+            return;
+
+        Store.RemoveEntry(entry.Id);
+        await OnClose.InvokeAsync();
+    }
+}

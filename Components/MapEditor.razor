@@ -3,7 +3,7 @@
 @inject ProjectService Store
 @inject IJSRuntime JS
 
-<div class="app">
+<div class="app @(SelectedPin is not null || OpenSheet is not null ? "reading" : "")">
 
     @* ===================== Panel izquierdo: proyecto y capas ===================== *@
     <aside class="panel panel-left">
@@ -29,6 +29,7 @@
 
             <GeneratorPanel OnGenerated="OnMapGenerated" OnPopulated="OnRegionsChanged" OnStartSketch="StartSketch" />
             <RegionPanel OnChanged="OnRegionsChanged" />
+            <WikiList Current="CurrentTarget" OnOpen="OpenTargetAsync" />
 
             <div class="section-head">
                 <h2>Capas</h2>
@@ -312,7 +313,7 @@
     <aside class="panel panel-right">
         @if (Store.Loaded && SelectedPin is { } selectedPin)
         {
-            <h2>Ficha</h2>
+            <h2>@selectedPin.Title</h2>
 
             <label class="field">
                 <span>Título</span>
@@ -383,10 +384,7 @@
                 }
             }
 
-            <label class="field">
-                <span>Descripción</span>
-                <textarea rows="12" @bind="selectedPin.Description" @bind:event="oninput" @bind:after="() => OnPinChanged(selectedPin)"></textarea>
-            </label>
+            <EntryText Target="WikiTarget.Pin(selectedPin.Id)" OnOpen="OpenTargetAsync" />
 
             <p class="hint">
                 Posición: @FormatPercent(selectedPin.X) / @FormatPercent(selectedPin.Y).
@@ -394,6 +392,11 @@
             </p>
 
             <button class="btn danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
+        }
+        else if (Store.Loaded && OpenSheet is { } sheet)
+        {
+            <EntrySheet Target="sheet" OnOpen="OpenTargetAsync" OnShow="CenterOnAsync"
+                        OnClose="() => _sheet = null" OnRegionChanged="OnRegionsChanged" />
         }
         else if (Store.Loaded && _selectedCells.Count > 0 && Store.WorldReady)
         {
@@ -439,6 +442,7 @@
     private MapView _requestedView = MapView.Terrain; // última vista elegida (puede estar preparándose)
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
+    private WikiTarget? _sheet;                 // ficha de reino o suelta abierta en el panel derecho
     private readonly HashSet<int> _selectedCells = new(); // índices de celdas de la malla del mundo generado
     private bool _paintAdds;                  // el pincel agrega (true) o quita (false) celdas
     private (double X, double Y) _lastPaint;  // último punto pintado, en píxeles del mapa
@@ -505,6 +509,8 @@
     [JSInvokable]
     public Task OnMapClick(double x, double y) => InvokeAsync(() =>
     {
+        _sheet = null; // un clic en el mapa cierra la ficha abierta, como deselecciona un pin
+
         if (_mode == Mode.AddPin)
         {
             var layer = ActiveLayer ?? Store.Project.Layers[0];
@@ -671,6 +677,73 @@
     // Lo mismo para los cambios de reinos (nombres, colores): el editor vuelve a dibujar la vista.
     private void OnRegionsChanged() { }
 
+    // ------------------------------------------------------------ fichas
+
+    /// <summary>Ficha de reino o suelta abierta, si todavía existe (pudo borrarse desde otro lado).</summary>
+    private WikiTarget? OpenSheet => _sheet is { } sheet && Store.Exists(sheet) ? sheet : null;
+
+    /// <summary>Lo que muestra el panel derecho, para resaltarlo en la lista de fichas.</summary>
+    private WikiTarget? CurrentTarget => SelectedPin is { } pin ? WikiTarget.Pin(pin.Id) : OpenSheet;
+
+    /// <summary>
+    /// Abre una ficha (desde la lista, un enlace o una mención). Un lugar se selecciona como si se
+    /// hubiera hecho clic en su pin; un reino o una ficha suelta se abren en el panel derecho.
+    /// Si es un lugar o un reino, el mapa se centra en él.
+    /// </summary>
+    private async Task OpenTargetAsync(WikiTarget target)
+    {
+        if (target.Kind == WikiTargetKind.Pin)
+        {
+            SelectPin(target.Id);
+            if (SelectedPin is { } pin)
+                ShowLayerOf(pin); // si su capa estaba oculta, no se vería al centrar
+        }
+        else
+        {
+            _sheet = target;
+            _selectedPinId = null;
+            _selectedCells.Clear();
+        }
+
+        if (target.Kind != WikiTargetKind.Entry)
+            await CenterOnAsync(target);
+    }
+
+    private void ShowLayerOf(MapPin pin)
+    {
+        if (Store.Project.Layers.FirstOrDefault(l => l.Id == pin.LayerId) is { Visible: false } layer)
+        {
+            layer.Visible = true;
+            Store.RequestSave();
+        }
+    }
+
+    /// <summary>
+    /// Centra el mapa en un lugar (su pin) o en un reino (su capital o, si no tiene, el punto
+    /// donde va su nombre en la vista de reinos).
+    /// </summary>
+    private async Task CenterOnAsync(WikiTarget target)
+    {
+        if (_mapJs is null) return;
+
+        (double X, double Y)? point = null;
+        if (target.Kind == WikiTargetKind.Pin && Store.Project.Pins.FirstOrDefault(p => p.Id == target.Id) is { } pin)
+        {
+            point = (pin.X, pin.Y);
+        }
+        else if (target.Kind == WikiTargetKind.Region && Store.Project.Regions.FirstOrDefault(r => r.Id == target.Id) is { } region)
+        {
+            if (region.CapitalPinId is { } capitalId && Store.Project.Pins.FirstOrDefault(p => p.Id == capitalId) is { } capital)
+                point = (capital.X, capital.Y);
+            else if (region.Cells.Count > 0 && Store.GetWorld() is { } world &&
+                     ThematicRenderer.Labels(world, Store.Project.Regions).FirstOrDefault(l => l.Name == region.Name) is { } label)
+                point = (label.X, label.Y);
+        }
+
+        if (point is { } p)
+            await _mapJs.InvokeVoidAsync("centerOn", p.X, p.Y);
+    }
+
     /// <summary>
     /// Cambia la vista del mapa. La primera vez, dibujarla (y quizás rearmar el mundo) demora
     /// un poco: se avisa antes, como al entrar en "Ver celdas".
@@ -752,6 +825,7 @@
     private void SelectPin(Guid id)
     {
         _selectedPinId = id;
+        _sheet = null;
         _selectedCells.Clear();
         _choosingKind = false;
 
@@ -923,7 +997,10 @@
 
     private async Task DeletePinAsync(MapPin pin)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el pin \"{pin.Title}\"?"))
+        var keeps = Store.EntryOf(WikiTarget.Pin(pin.Id)) is not null
+            ? " Su texto se conserva como ficha suelta."
+            : "";
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el pin \"{pin.Title}\"?{keeps}"))
         {
             return;
         }

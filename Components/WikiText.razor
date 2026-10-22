@@ -1,0 +1,91 @@
+@inject ProjectService Store
+
+@* Dibuja el texto de una ficha. WikiMarkup lo separa en bloques y trozos; acá cada trozo se
+   escribe como texto (Razor lo escapa) y cada enlace es un botón. Nada de lo que escribe el
+   autor llega a la página como HTML. *@
+<div class="wiki-text">
+    @foreach (var block in WikiMarkup.Parse(Text))
+    {
+        switch (block.Kind)
+        {
+            case WikiBlockKind.Heading1:
+                <h3>@Line(block.Lines[0])</h3>
+                break;
+            case WikiBlockKind.Heading2:
+                <h4>@Line(block.Lines[0])</h4>
+                break;
+            case WikiBlockKind.Heading3:
+                <h5>@Line(block.Lines[0])</h5>
+                break;
+            case WikiBlockKind.List:
+                <ul>
+                    @foreach (var line in block.Lines)
+                    {
+                        <li>@Line(line)</li>
+                    }
+                </ul>
+                break;
+            case WikiBlockKind.Quote:
+                <blockquote>@Lines(block)</blockquote>
+                break;
+            default:
+                <p>@Lines(block)</p>
+                break;
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+
+    /// <summary>Se dispara al tocar un enlace, con el nombre al que apunta.</summary>
+    [Parameter] public EventCallback<string> OnLink { get; set; }
+
+    // Las líneas de un párrafo o una cita, separadas por saltos de línea.
+    private RenderFragment Lines(WikiBlock block) => @<text>
+        @for (var i = 0; i < block.Lines.Count; i++)
+        {
+            if (i > 0)
+            {
+                <br />
+            }
+            @Line(block.Lines[i])
+        }
+    </text>;
+
+    private RenderFragment Line(IReadOnlyList<WikiInline> inlines) => @<text>
+        @foreach (var inline in inlines)
+        {
+            @Span(inline)
+        }
+    </text>;
+
+    // Un trozo: primero el contenido (texto o enlace) y después, por fuera, negrita y cursiva.
+    // Cada template ocupa una sola línea: si no, Razor agrega el espacio en blanco del código
+    // al texto ("Corlis ." en vez de "Corlis.").
+    private RenderFragment Span(WikiInline inline)
+    {
+        var content = inline.Link is { } link ? LinkButton(link, inline.Text) : Plain(inline.Text);
+
+        if (inline.Italic)
+        {
+            var inner = content;
+            content = @<em>@inner</em>;
+        }
+        if (inline.Bold)
+        {
+            var inner = content;
+            content = @<strong>@inner</strong>;
+        }
+        return content;
+    }
+
+    private static RenderFragment Plain(string text) => @<text>@text</text>;
+
+    private RenderFragment LinkButton(string link, string text)
+    {
+        var missing = Store.Resolve(link) is null;
+        var title = missing ? $"{link}: todavía no tiene ficha (clic para crearla)" : link;
+        return @<button type="button" class="wiki-link @(missing ? "missing" : "")" title="@title" @onclick="() => OnLink.InvokeAsync(link)">@text</button>;
+    }
+}

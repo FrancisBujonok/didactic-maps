@@ -22,6 +22,7 @@ Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). T
 10. En "Reinos" (panel izquierdo) creá un reino; con celdas elegidas, asignalas desde el panel derecho. En la barra, "Vista" muestra el mapa por reinos, altura, temperatura o humedad, con su leyenda.
 11. Cada pin tiene un tipo con su ícono y un tamaño (chico, mediano, grande) que marca su importancia; la forma depende del grupo: insignia redonda para asentamientos, cuadrada para defensas y sin insignia para lugares menores. Tipos: ciudad, aldea, puerto, posada, fortaleza, torre, templo, bosque sagrado, cueva, mazmorra, mina, ruina, sitio abandonado, campo de batalla y otros. Con "Colocar pines" activo, la barra de íconos de arriba del mapa elige el tipo de los pines nuevos; en la ficha, "Cambiar" abre la grilla de tipos. Si un pin está dentro de un reino, su ficha permite marcarlo como capital: se dibuja con una estrella y un anillo doble.
 12. En "Generar mapa", sección "Poblados", "Poblar mapa" funda ciudades, puertos, aldeas, fortalezas en las fronteras, cuevas, ruinas y bosques sagrados donde tiene sentido (ríos, costas, tierra fértil), con nombres inventados y su propia semilla. Puede crear reinos nuevos alrededor de las capitales o usar los que ya tenés. Los lugares que edites o muevas se conservan al volver a poblar.
+13. Fichas del mundo: cada lugar, cada reino y cada personaje, facción o evento puede tener una ficha con texto. En la ficha de un pin o en "Fichas" (panel izquierdo), "Editar" permite escribir con formato simple: `# Título`, `**negrita**`, `*cursiva*`, `- lista`, `> cita` y enlaces `[[Otra ficha]]`. Tocar un enlace abre esa ficha y, si es un lugar o un reino, centra el mapa en él; un enlace a un nombre que todavía no tiene ficha la crea. Cada ficha muestra qué otras la mencionan. Si borrás un lugar, su ficha se conserva como ficha suelta.
 
 ## Pruebas automáticas
 
@@ -41,6 +42,8 @@ Cubren el generador (misma semilla, mismo mundo; porcentaje de tierra en las 10 
 - `Components/GeneratorPanel.razor`: el panel "Generar mapa".
 - `Components/CellInfo.razor` y `CellPanel.razor`: la ficha de las celdas seleccionadas y las herramientas para editarlas.
 - `Components/RegionPanel.razor`: la lista de reinos.
+- `Models/WikiEntry.cs` y `Wiki/`: las fichas, el traductor del formato simple (`WikiMarkup`) y el índice de nombres y menciones (`WikiLinks`).
+- `Components/WikiList.razor`, `EntrySheet.razor`, `EntryText.razor` y `WikiText.razor`: la lista de fichas, la ficha de un reino o suelta, el texto con su edición y el dibujo del texto con enlaces.
 - `Components/PinIcon.razor`: los íconos de los tipos de pin (SVG propios).
 - `Components/KindPicker.razor`: el selector visual de tipo (barra de colocación y ficha).
 - `Components/TemplatePicker.razor`: la grilla de plantillas de relieve con miniaturas.
@@ -57,6 +60,7 @@ Decisiones de diseño que conviene entender:
 - El zoom y el arrastre viven en JavaScript para que sean fluidos; C# solo recibe los eventos importantes.
 - La imagen se guarda aparte del proyecto porque pesa mucho más.
 - El zoom máximo depende de la imagen: 2x para PNG y JPG (más allá se ven borrosos) y 16x para SVG, que es vectorial y no pierde nitidez. Para mapas de Azgaar conviene exportar en SVG.
+- El texto de las fichas nunca se inserta como HTML: el traductor lo separa en bloques y trozos, y Razor los escribe como texto. Así nada de lo que se escriba en una ficha puede ejecutarse en la página.
 
 ## Ideas para modificar (ejercicios)
 

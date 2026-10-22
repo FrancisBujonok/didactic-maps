@@ -113,6 +113,11 @@ h3 {
     height: 100vh;
 }
 
+/* Con una ficha abierta, el panel derecho se ensancha para leer cómodo. */
+.app.reading {
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 400px);
+}
+
 .panel {
     background: var(--panel);
     padding: var(--space-4);
@@ -136,7 +141,7 @@ h3 {
 
 /* En pantallas angostas los paneles se apilan y el mapa conserva un alto útil. */
 @media (max-width: 900px) {
-    .app {
+    .app, .app.reading {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto 70vh auto;
         height: auto;
@@ -163,7 +168,7 @@ h3 {
     font-size: var(--text-sm);
 }
 
-input[type="text"], input[type="number"], select, textarea {
+input[type="text"], input[type="number"], input[type="search"], select, textarea {
     width: 100%;
     padding: var(--space-2);
     background: var(--bg);
@@ -174,7 +179,7 @@ input[type="text"], input[type="number"], select, textarea {
     transition: border-color var(--fast), background-color var(--fast);
 }
 
-input[type="text"]:hover, input[type="number"]:hover, select:hover, textarea:hover { border-color: var(--text); }
+input[type="text"]:hover, input[type="number"]:hover, input[type="search"]:hover, select:hover, textarea:hover { border-color: var(--text); }
 
 textarea { resize: vertical; }
 
@@ -879,3 +884,103 @@ input[type="range"] {
 }
 
 #blazor-error-ui a { color: var(--on-accent); margin-left: var(--space-3); cursor: pointer; }
+
+/* ---------- fichas del mundo ---------- */
+
+/* Lista de fichas (panel izquierdo): búsqueda y botón en una fila, nombres agrupados. */
+.wiki-search {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.wiki-group {
+    margin: var(--space-3) 0 var(--space-1);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    font-weight: 500;
+}
+
+.wiki-list { list-style: none; margin: 0; padding: 0; }
+
+/* Cada nombre es un botón que ocupa la fila, alineado como texto. */
+.wiki-row {
+    display: block;
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    background: none;
+    color: var(--text);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--fast), border-color var(--fast);
+}
+
+.wiki-row:hover { background: var(--hover); border-color: var(--border); }
+.wiki-row.on,
+.wiki-row.on:hover { background: var(--bg); border-color: var(--text); font-weight: 700; }
+.wiki-row .muted { font-size: var(--text-sm); }
+
+/* Texto de la ficha: títulos con la tipografía de los títulos, párrafos con aire. */
+.entry-text { margin-top: var(--space-6); }
+.entry-text .section-head h3 { margin: 0; }
+
+.wiki-text { line-height: 1.5; }
+.wiki-text h3, .wiki-text h4, .wiki-text h5 {
+    margin: var(--space-4) 0 var(--space-2);
+    font-family: var(--font-title);
+    font-weight: 700;
+}
+.wiki-text h3 { font-size: var(--text-lg); }
+.wiki-text h4 { font-size: var(--text-md); }
+.wiki-text h5 { font-size: var(--text-md); color: var(--muted); }
+.wiki-text p, .wiki-text ul { margin: 0 0 var(--space-3); }
+.wiki-text ul { padding-left: var(--space-6); }
+
+/* Cita: sangría y una línea fina del color de los bordes (no del acento). */
+.wiki-text blockquote {
+    margin: 0 0 var(--space-3);
+    padding-left: var(--space-3);
+    border-left: var(--focus) solid var(--border);
+    color: var(--muted);
+}
+
+/* Enlace a otra ficha: un botón que se lee como un enlace subrayado del color del acento.
+   Si el nombre todavía no tiene ficha, el subrayado es punteado y el texto tenue. */
+.wiki-link {
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--accent);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    transition: color var(--fast);
+}
+.wiki-link:hover { color: var(--text); }
+.wiki-link.missing { color: var(--muted); text-decoration-style: dotted; }
+.wiki-link.missing:hover { color: var(--text); }
+
+.entry-editor { font-size: var(--text-sm); line-height: 1.5; }
+
+.entry-text code {
+    padding: 0 var(--space-1);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+}
+
+.mentions-title {
+    margin: var(--space-6) 0 var(--space-2);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    font-weight: 500;
+}
+.mentions { margin: 0; padding-left: var(--space-6); }

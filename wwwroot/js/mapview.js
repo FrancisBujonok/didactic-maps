@@ -44,6 +44,7 @@ export function init(viewport, world, dotnet) {
     // lugares chicos (ver .viewport.far en app.css). Aparecen al acercarse al doble del ajuste.
     viewport.classList.toggle('far', s.scale < s.fitScale * 2);
   };
+  s.apply = apply; // lo usa centerOn, que vive fuera de init
 
   // Centra el mapa entero dentro del visor.
   s.doFit = () => {
@@ -264,6 +265,17 @@ export function fit() {
   } else {
     state.pendingFit = true;
   }
+}
+
+// Centra el mapa en un punto normalizado (0 a 1), por ejemplo al abrir la ficha de un lugar.
+// Si el mapa estaba alejado, se acerca al doble del ajuste: ahí ya se leen los nombres chicos.
+export function centerOn(nx, ny) {
+  const s = state;
+  if (!s || !s.world.offsetWidth) return;
+  s.scale = clamp(Math.max(s.scale, s.fitScale * 2), s.minScale, s.maxScale);
+  s.x = s.viewport.clientWidth / 2 - nx * s.world.offsetWidth * s.scale;
+  s.y = s.viewport.clientHeight / 2 - ny * s.world.offsetHeight * s.scale;
+  s.apply();
 }
 
 export function dispose() {

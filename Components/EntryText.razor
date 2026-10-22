@@ -1,0 +1,74 @@
+@inject ProjectService Store
+
+@* Texto de una ficha (de un pin, un reino o suelta): se lee con formato y enlaces, y con
+   "Editar" se escribe. Abajo, las fichas que la mencionan. *@
+<section class="entry-text" aria-label="Texto de la ficha">
+    <div class="section-head">
+        <h3>Texto</h3>
+        <button type="button" class="btn small" aria-pressed="@(_editing ? "true" : "false")"
+                @onclick="() => _editing = !_editing">@(_editing ? "Listo" : "Editar")</button>
+    </div>
+
+    @if (_editing)
+    {
+        <textarea class="entry-editor" rows="14" aria-label="Texto de la ficha de @Store.NameOf(Target)"
+                  value="@Text" @oninput="OnInput"></textarea>
+        <p class="hint">
+            <code># Título</code> <code>**negrita**</code> <code>*cursiva*</code> <code>- lista</code>
+            <code>&gt; cita</code> <code>[[Otra ficha]]</code> <code>[[Ficha|texto]]</code>
+        </p>
+    }
+    else if (string.IsNullOrWhiteSpace(Text))
+    {
+        <p class="muted">Todavía no hay nada escrito. Tocá "Editar" para empezar.</p>
+    }
+    else
+    {
+        <WikiText Text="@Text" OnLink="FollowLinkAsync" />
+    }
+
+    @if (Store.MentionsOf(Target) is { Count: > 0 } mentions)
+    {
+        <h4 class="mentions-title">Mencionada en</h4>
+        <ul class="mentions">
+            @foreach (var source in mentions)
+            {
+                <li><button type="button" class="wiki-link" @onclick="() => OnOpen.InvokeAsync(source)">@Store.NameOf(source)</button></li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public WikiTarget Target { get; set; }
+
+    /// <summary>Se dispara al seguir un enlace: el editor abre esa ficha.</summary>
+    [Parameter] public EventCallback<WikiTarget> OnOpen { get; set; }
+
+    private bool _editing;
+    private WikiTarget? _shown;
+
+    private string Text => Store.EntryOf(Target)?.Text ?? "";
+
+    protected override void OnParametersSet()
+    {
+        // Otra ficha: se empieza leyendo. Una ficha nueva y vacía (recién creada) se abre escribiendo.
+        if (_shown != Target)
+        {
+            _shown = Target;
+            _editing = Target.Kind == WikiTargetKind.Entry && string.IsNullOrWhiteSpace(Text);
+        }
+    }
+
+    private void OnInput(ChangeEventArgs e) => Store.SetEntryText(Target, e.Value?.ToString() ?? "");
+
+    /// <summary>
+    /// Un enlace a algo que existe abre su ficha. Uno a un nombre sin ficha la crea (como en una
+    /// wiki: el enlace "en rojo" invita a escribir esa página) y la abre para escribir.
+    /// </summary>
+    private async Task FollowLinkAsync(string name)
+    {
+        var target = Store.Resolve(name) ?? Store.AddEntry(name, "Otro");
+        await OnOpen.InvokeAsync(target);
+    }
+}

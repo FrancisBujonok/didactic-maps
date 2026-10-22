@@ -30,6 +30,9 @@ public class MapProject
 
     /// <summary>Zonas del dibujo en curso que no son tierra (agua, cordilleras, biomas).</summary>
     public List<SketchFeature> SketchFeatureDraft { get; set; } = new();
+
+    /// <summary>Fichas del mundo: de pines, de reinos y sueltas (ver WikiEntry).</summary>
+    public List<WikiEntry> Entries { get; set; } = new();
 }
 
 /// <summary>
@@ -157,6 +160,11 @@ public class MapPin
 
     public string Title { get; set; } = "Nuevo pin";
     public string Kind { get; set; } = Kinds[0];
+
+    /// <summary>
+    /// Descripción de los proyectos guardados antes de las fichas. Al abrirlos, el texto pasa a
+    /// la ficha del pin (ver ProjectService.Normalize) y esto queda vacío: ya no se usa.
+    /// </summary>
     public string Description { get; set; } = "";
 
     /// <summary>

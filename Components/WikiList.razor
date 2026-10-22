@@ -1,0 +1,108 @@
+@inject ProjectService Store
+@implements IDisposable
+
+@* Índice de fichas del mundo, agrupadas por categoría. Al buscar, también aparecen los
+   lugares y reinos que todavía no tienen texto, para poder abrir su ficha y empezarla. *@
+<details class="fold" open>
+    <summary>Fichas</summary>
+
+    <div class="wiki-search">
+        <input type="search" placeholder="Buscar por nombre" aria-label="Buscar fichas"
+               @bind="_query" @bind:event="oninput" />
+        <button type="button" class="btn small" @onclick="AddAsync">+ Ficha</button>
+    </div>
+
+    @{
+        var items = Items();
+    }
+    @if (items.Count == 0)
+    {
+        <p class="hint">
+            @(_query.Trim().Length > 0
+                ? "Nada con ese nombre."
+                : "Todavía no hay fichas. Creá una con \"+ Ficha\" o escribí en la ficha de un lugar.")
+        </p>
+    }
+
+    @foreach (var group in items.GroupBy(i => i.Category).OrderBy(g => Array.IndexOf(WikiEntry.Categories, g.Key)))
+    {
+        <h3 class="wiki-group">@group.Key</h3>
+        <ul class="wiki-list">
+            @foreach (var item in group.OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                <li @key="item.Target">
+                    <button type="button" class="wiki-row @(item.Target == Current ? "on" : "")"
+                            aria-current="@(item.Target == Current ? "true" : null)"
+                            @onclick="() => OnOpen.InvokeAsync(item.Target)">
+                        @item.Name
+                        @if (!item.HasText)
+                        {
+                            <span class="muted"> (sin texto)</span>
+                        }
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</details>
+
+@code {
+    /// <summary>Ficha abierta ahora, para resaltarla en la lista.</summary>
+    [Parameter] public WikiTarget? Current { get; set; }
+
+    [Parameter] public EventCallback<WikiTarget> OnOpen { get; set; }
+
+    private string _query = "";
+
+    private sealed record Item(WikiTarget Target, string Name, string Category, bool HasText);
+
+    private List<Item> Items()
+    {
+        var query = _query.Trim();
+        bool Matches(string name) => query.Length == 0 || name.Contains(query, StringComparison.CurrentCultureIgnoreCase);
+
+        var items = Store.Project.Entries
+            .Select(e => (Entry: e, Target: WikiLinks.TargetOf(e)))
+            .Where(x => Store.Exists(x.Target))
+            .Select(x => new Item(x.Target, Store.NameOf(x.Target), x.Entry.Category, x.Entry.Text.Trim().Length > 0))
+            .Where(i => Matches(i.Name))
+            .ToList();
+
+        if (query.Length > 0)
+        {
+            // Lugares y reinos sin ficha todavía: solo al buscar, para no llenar la lista.
+            var withEntry = items.Select(i => i.Target).ToHashSet();
+            items.AddRange(Store.Project.Regions
+                .Select(r => new Item(WikiTarget.Region(r.Id), r.Name, "Reino", false))
+                .Where(i => !withEntry.Contains(i.Target) && Matches(i.Name)));
+            items.AddRange(Store.Project.Pins
+                .Select(p => new Item(WikiTarget.Pin(p.Id), p.Title, "Lugar", false))
+                .Where(i => !withEntry.Contains(i.Target) && Matches(i.Name)));
+        }
+
+        return items;
+    }
+
+    private async Task AddAsync()
+    {
+        var target = Store.AddEntry(_query.Trim().Length > 0 ? _query : "Nueva ficha");
+        _query = "";
+        await OnOpen.InvokeAsync(target);
+    }
+
+    // Las fichas cambian desde el panel derecho y los nombres de pines desde su ficha: con estos
+    // avisos la lista se vuelve a dibujar (si no, Blazor no sabe que cambió).
+    protected override void OnInitialized()
+    {
+        Store.WikiChanged += OnStoreChanged;
+        Store.StatusChanged += OnStoreChanged;
+    }
+
+    public void Dispose()
+    {
+        Store.WikiChanged -= OnStoreChanged;
+        Store.StatusChanged -= OnStoreChanged;
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+}

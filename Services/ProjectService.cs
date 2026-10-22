@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MapaMundos.Generation;
 using MapaMundos.Models;
+using MapaMundos.Wiki;
 using Microsoft.JSInterop;
 
 namespace MapaMundos.Services;
@@ -130,6 +131,49 @@ public class ProjectService
             if (edit.Biome is { } b && (!Enum.IsDefined(b) || !BiomeNames.Land.Contains(b)))
                 edit.Biome = null;
         }
+
+        NormalizeEntries(pinIds);
+    }
+
+    /// <summary>
+    /// Fichas: textos sin null, categoría conocida, y cada pin o reino con una ficha como máximo.
+    /// Las vinculadas a algo que ya no existe pasan a ser sueltas con su último nombre conocido.
+    /// También pasa la descripción de los pines de proyectos viejos a su ficha.
+    /// </summary>
+    private void NormalizeEntries(HashSet<Guid> pinIds)
+    {
+        Project.Entries = (Project.Entries ?? new()).Where(e => e is not null).ToList();
+        var regionIds = Project.Regions.Select(r => r.Id).ToHashSet();
+        var linked = new HashSet<Guid>();
+
+        foreach (var entry in Project.Entries)
+        {
+            entry.Title ??= "";
+            entry.Text ??= "";
+            if (!WikiEntry.Categories.Contains(entry.Category))
+                entry.Category = "Otro";
+
+            if (entry.PinId is { } pin && (!pinIds.Contains(pin) || !linked.Add(pin)))
+                entry.PinId = null;
+            if (entry.RegionId is { } region && (entry.PinId is not null || !regionIds.Contains(region) || !linked.Add(region)))
+                entry.RegionId = null;
+            if (entry.PinId is null && entry.RegionId is null && entry.Title.Trim().Length == 0)
+                entry.Title = "Ficha sin nombre";
+        }
+
+        foreach (var pin in Project.Pins.Where(p => !string.IsNullOrWhiteSpace(p.Description)))
+        {
+            // Si ya tenía ficha, la descripción va arriba de su texto: nunca se descarta.
+            if (Project.Entries.FirstOrDefault(e => e.PinId == pin.Id) is { } entry)
+            {
+                entry.Text = pin.Description + "\n\n" + entry.Text;
+            }
+            else
+            {
+                Project.Entries.Add(new WikiEntry { PinId = pin.Id, Title = pin.Title, Category = "Lugar", Text = pin.Description });
+            }
+            pin.Description = "";
+        }
     }
 
     // ---------------------------------------------------------------- capas
@@ -151,6 +195,7 @@ public class ProjectService
     {
         if (Project.Layers.Count <= 1) return; // siempre tiene que quedar al menos una
         Project.Layers.RemoveAll(l => l.Id == id);
+        ReleaseEntries(Project.Pins.Where(p => p.LayerId == id).Select(p => p.Id), Array.Empty<Guid>());
         Project.Pins.RemoveAll(p => p.LayerId == id);
         RequestSave();
     }
@@ -206,6 +251,7 @@ public class ProjectService
 
     public void RemovePin(Guid id)
     {
+        ReleaseEntries(new[] { id }, Array.Empty<Guid>());
         Project.Pins.RemoveAll(p => p.Id == id);
 
         // Si era la capital de un reino, el reino queda sin capital.
@@ -352,6 +398,7 @@ public class ProjectService
     public void RemoveGeneratedPins()
     {
         var removed = Project.Pins.Where(p => p.Generated).Select(p => p.Id).ToHashSet();
+        ReleaseEntries(removed, Array.Empty<Guid>());
         Project.Pins.RemoveAll(p => removed.Contains(p.Id));
         foreach (var region in Project.Regions.Where(r => r.CapitalPinId is { } id && removed.Contains(id)))
             region.CapitalPinId = null;
@@ -447,6 +494,7 @@ public class ProjectService
     /// <summary>Borra el reino. Sus celdas quedan sin reino; el terreno no cambia.</summary>
     public void RemoveRegion(Guid id)
     {
+        ReleaseEntries(Array.Empty<Guid>(), new[] { id });
         Project.Regions.RemoveAll(r => r.Id == id);
         RegionsChanged();
     }
@@ -515,6 +563,111 @@ public class ProjectService
     {
         _viewCache.Remove(MapView.Regions);
         RequestSave();
+    }
+
+    // ------------------------------------------------------------------- fichas
+
+    /// <summary>Se dispara cuando se crea, borra o cambia una ficha (para la lista de fichas).</summary>
+    public event Action? WikiChanged;
+
+    public WikiEntry? EntryOf(WikiTarget target) => WikiLinks.EntryOf(Project, target);
+
+    public string NameOf(WikiTarget target) => WikiLinks.NameOf(Project, target);
+
+    public bool Exists(WikiTarget target) => WikiLinks.Exists(Project, target);
+
+    public WikiTarget? Resolve(string name) => WikiLinks.Resolve(Project, name);
+
+    public List<WikiTarget> MentionsOf(WikiTarget target) => WikiLinks.MentionsOf(Project, target);
+
+    /// <summary>
+    /// Guarda el texto de una ficha. Un pin o un reino reciben su ficha recién cuando se les
+    /// escribe algo, y la pierden si el texto queda vacío: así no hay fichas vacías dando vueltas.
+    /// Escribir en la ficha de un lugar generado lo "adopta", como editarlo o moverlo.
+    /// </summary>
+    public void SetEntryText(WikiTarget target, string text)
+    {
+        var entry = EntryOf(target);
+
+        if (target.Kind != WikiTargetKind.Entry)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                if (entry is not null) Project.Entries.Remove(entry);
+                WikiEdited();
+                return;
+            }
+
+            entry ??= AddLinkedEntry(target);
+            entry.Title = NameOf(target); // último nombre conocido, por si después desaparece
+
+            if (target.Kind == WikiTargetKind.Pin && Project.Pins.FirstOrDefault(p => p.Id == target.Id) is { } pin)
+                pin.Generated = false;
+        }
+
+        if (entry is null) return;
+        entry.Text = text;
+        WikiEdited();
+    }
+
+    private WikiEntry AddLinkedEntry(WikiTarget target)
+    {
+        var entry = target.Kind == WikiTargetKind.Pin
+            ? new WikiEntry { PinId = target.Id, Category = "Lugar" }
+            : new WikiEntry { RegionId = target.Id, Category = "Reino" };
+        Project.Entries.Add(entry);
+        return entry;
+    }
+
+    /// <summary>Crea una ficha suelta (un personaje, una facción...) y devuelve su destino.</summary>
+    public WikiTarget AddEntry(string title, string category = "Personaje")
+    {
+        var entry = new WikiEntry
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? "Nueva ficha" : title.Trim(),
+            Category = WikiEntry.Categories.Contains(category) ? category : "Otro"
+        };
+        Project.Entries.Add(entry);
+        WikiEdited();
+        return WikiTarget.Entry(entry.Id);
+    }
+
+    /// <summary>Borra una ficha suelta. Las de pines y reinos se vacían borrando su texto.</summary>
+    public void RemoveEntry(Guid id)
+    {
+        Project.Entries.RemoveAll(e => e.Id == id && e.PinId is null && e.RegionId is null);
+        WikiEdited();
+    }
+
+    /// <summary>Avisa que cambió el título o la categoría de una ficha suelta y la guarda.</summary>
+    public void WikiEdited()
+    {
+        RequestSave();
+        WikiChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Antes de borrar pines o reinos: sus fichas pasan a ser sueltas, con el nombre que tenían.
+    /// El texto que escribió el autor nunca se pierde por borrar un lugar.
+    /// </summary>
+    private void ReleaseEntries(IEnumerable<Guid> pinIds, IEnumerable<Guid> regionIds)
+    {
+        var pins = pinIds.ToHashSet();
+        var regions = regionIds.ToHashSet();
+
+        foreach (var entry in Project.Entries)
+        {
+            if (entry.PinId is { } pin && pins.Contains(pin))
+            {
+                entry.Title = NameOf(WikiTarget.Pin(pin));
+                entry.PinId = null;
+            }
+            else if (entry.RegionId is { } region && regions.Contains(region))
+            {
+                entry.Title = NameOf(WikiTarget.Region(region));
+                entry.RegionId = null;
+            }
+        }
     }
 
     // ------------------------------------------------------------------- dibujo
@@ -719,6 +872,7 @@ public class ProjectService
 
         if (newKingdoms)
         {
+            ReleaseEntries(Array.Empty<Guid>(), Project.Regions.Select(r => r.Id));
             Project.Regions = plan.Kingdoms.Select((k, i) => new Region
             {
                 Name = k.Name,
