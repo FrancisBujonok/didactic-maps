@@ -1,0 +1,71 @@
+# Publica la app en GitHub Pages con cada push a main.
+#
+# Qué hace, en orden: baja el código, instala .NET, corre las pruebas (si alguna falla, no se
+# publica nada y queda la versión anterior), compila en Release, ajusta la copia publicada para
+# Pages y la sube. La app queda en https://<usuario>.github.io/<repositorio>/.
+#
+# Para que funcione hay que elegir una sola vez, en el repositorio, Settings > Pages > Source:
+# "GitHub Actions".
+
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # también se puede lanzar a mano desde la pestaña Actions
+
+# Permisos mínimos: leer el código y escribir en Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Si llegan dos push seguidos, se publica el último y no se pisan.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bajar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Correr las pruebas
+        run: dotnet test Tests/MapaMundos.Tests -c Release
+
+      - name: Compilar en Release
+        run: dotnet publish MapaMundos.csproj -c Release -o salida
+
+      # En Pages la app vive en una subcarpeta (/didactic-maps/), no en la raíz del sitio. El
+      # index.html del repositorio dice <base href="/" /> para que dotnet run siga andando en la
+      # PC; solo la copia publicada se cambia.
+      - name: Ajustar la ruta base
+        run: sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/" />|' salida/wwwroot/index.html
+
+      # Pages procesa los sitios con Jekyll, que ignora las carpetas que empiezan con "_", y la
+      # más importante de Blazor es _framework. Este archivo vacío lo desactiva.
+      - name: Desactivar Jekyll
+        run: touch salida/wwwroot/.nojekyll
+
+      - name: Empaquetar el sitio
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: salida/wwwroot
+
+  publicar:
+    needs: compilar # solo si la tarea de arriba terminó bien
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacion.outputs.page_url }}
+    steps:
+      - name: Publicar en Pages
+        id: publicacion
+        uses: actions/deploy-pages@v4

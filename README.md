@@ -1,6 +1,12 @@
 # Mapa de Mundos
 
+[![Pruebas y publicación](https://github.com/FrancisBujonok/didactic-maps/actions/workflows/publicar.yml/badge.svg)](https://github.com/FrancisBujonok/didactic-maps/actions/workflows/publicar.yml)
+
 Visor y editor de mapas para worldbuilding, hecho con Blazor WebAssembly (C#). Todo corre en el navegador: no hay servidor ni base de datos externa.
+
+**[Probala acá](https://francisbujonok.github.io/didactic-maps/)**: generá un mundo con "Generar mapa", poblalo y escribí sus fichas. Lo que hagas se guarda solo en tu navegador.
+
+![Un continente generado: cordilleras, bosques, costas con líneas de agua y reinos con sus capitales](docs/captura.jpg)
 
 ## Ejecutar
 
@@ -34,6 +40,18 @@ dotnet test Tests/MapaMundos.Tests
 
 Cubren el generador (misma semilla, mismo mundo; porcentaje de tierra en las 10 plantillas; borde siempre mar), las ayudas de geometría de los dibujos, los retoques (una isla agregada es tierra y no cambia nada lejos) y la limpieza de parámetros guardados. Las "huellas" de `GeneratorTests` resumen tres mapas conocidos: si fallan después de un cambio, ese cambio altera los mapas que ya generaste con las mismas semillas.
 
+## Publicación
+
+La versión online se publica sola en GitHub Pages con cada push a `main`, con el flujo de GitHub Actions `.github/workflows/publicar.yml`:
+
+1. Corre las pruebas. Si alguna falla, no se publica nada y queda la versión anterior.
+2. Compila en Release (`dotnet publish -c Release`): más chica y rápida que la de `dotnet run` (generar un mapa tarda alrededor de 1 s, contra unos 4,7 s en Debug).
+3. Cambia `<base href="/" />` por `<base href="/didactic-maps/" />` en la copia publicada, porque en Pages la app vive en esa subcarpeta.
+4. Agrega un archivo vacío `.nojekyll`, para que Pages no ignore la carpeta `_framework` (Jekyll ignora las que empiezan con guion bajo).
+5. Sube la carpeta `wwwroot` publicada a Pages.
+
+Como la app no tiene servidor, cada visitante guarda sus mundos en su propio navegador: nada de lo que se hace en el sitio publicado viaja a otro lado.
+
 ## Cómo está organizado
 
 - `Models/`: los datos (`MapProject`, `MapLayer`, `MapPin`) y el formato del archivo exportado.
@@ -54,6 +72,8 @@ Cubren el generador (misma semilla, mismo mundo; porcentaje de tierra en las 10 
 - `Generation/`: el generador de mapas, una clase por etapa (malla, continente, clima, ríos, biomas, poblados), las plantillas de relieve (`ReliefShape`), el dibujo en SVG, las vistas (`ThematicRenderer`) y los nombres (`NameGenerator`).
 - `wwwroot/js/mapview.js`: zoom, arrastre y clics sobre el mapa.
 - `wwwroot/js/storage.js` y `files.js`: IndexedDB y selector/descarga de archivos.
+- `.github/workflows/publicar.yml`: publicación automática en GitHub Pages (ver "Publicación").
+- `docs/captura.jpg`: la captura de este README.
 
 Decisiones de diseño que conviene entender:
 

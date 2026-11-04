@@ -6,6 +6,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 
 - `dotnet build`: compilar (verificar después de cada cambio).
 - `dotnet run`: ejecutar en http://localhost:5000 (no hay launchSettings.json, es el puerto por defecto).
+- `dotnet publish MapaMundos.csproj -c Release -o <carpeta>`: la versión que se publica (unos 90 s). Para probarla como en Pages: cambiar `<base href="/" />` por `<base href="/didactic-maps/" />` en la copia y servirla bajo `/didactic-maps/` (en la sesión del 2026-11-04 se usó un servidor de Node de pocas líneas en el puerto 5098).
 - `dotnet test Tests/MapaMundos.Tests`: correr las pruebas (unos 2 s). No hay archivo de solución a propósito: con un `.sln` o `.slnx` en la raíz, `dotnet build` y `dotnet run` sin argumentos fallan por haber dos archivos de proyecto o solución.
 - SDK instalado: 10.0.400. Destino: net10.0, paquetes 10.0.*.
 - Vista previa de Claude: configuración `pruebas` en `.claude/launch.json`, puerto 5080. Es otro origen, así que su IndexedDB no pisa los datos reales del puerto 5000. Si el panel está oculto no dibuja cuadros: no sirven capturas ni ResizeObserver; se puede mostrar con `show_pane` (preview) o probar con scripts. Para capturas de escritorio, emular 1024 x 680 (a 1440 la imagen sale ilegible). A veces la captura toma un cuadro a mitad de una transición de color: repetirla antes de sacar conclusiones.
@@ -52,11 +53,13 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
 - `wwwroot/js/storage.js`: IndexedDB como clave/valor (`project`, `image`).
 - `wwwroot/js/files.js`: selector de archivos y descarga.
 - `wwwroot/css/app.css`: estilos.
+- `.github/workflows/publicar.yml`: publicación en GitHub Pages con cada push a `main` (pruebas, Release, ruta base, `.nojekyll`, subida). `docs/captura.jpg`: captura del README.
 - `Tests/MapaMundos.Tests/`: pruebas xUnit, proyecto aparte que referencia a la app (`MapaMundos.csproj` excluye la carpeta `Tests` con `Compile Remove`). `TestWorlds` (parámetros fijos, `Ellipse`, `Fingerprint`), `GeneratorTests`, `SketchesTests`, `RetouchTests`, `GeneratorSettingsTests`, `WikiMarkupTests`, `WikiLinksTests`, `RenameLinksTests`.
 
 ## Decisiones
 
 - Blazor WebAssembly standalone, sin backend. Todo se guarda en el navegador.
+- Publicación (decidida por el autor el 2026-11-04): GitHub Pages con GitHub Actions, en https://francisbujonok.github.io/didactic-maps/. Dos tareas: `compilar` (pruebas en Release, `dotnet publish`, `sed` de la ruta base con el nombre del repositorio, `.nojekyll`, `upload-pages-artifact`) y `publicar` (`deploy-pages`, solo si la primera terminó bien). El `index.html` del repositorio conserva `<base href="/" />` para `dotnet run`. Sin firmas: el YAML no menciona a Claude y los commits los hace el autor; en Actions las publicaciones figuran como "github-actions". Cada visitante guarda sus mundos en su navegador (IndexedDB por origen): los del autor en localhost no se suben.
 - Pines con coordenadas normalizadas (0 a 1), independientes de la resolución de la imagen.
 - Zoom y pan viven en JS. C# solo recibe `OnMapClick`, `OnPinMoved` y `OnCellPaint` (pincel de selección: Shift + arrastrar con el visor en clase `inspecting`).
 - La imagen se guarda aparte del proyecto (clave `image`) y hoy es un data URL.
@@ -140,7 +143,7 @@ Herramienta de worldbuilding para novelas de fantasía y pieza de portfolio. El 
   - Los pines generados van a la capa "Poblados" (sepia #6B4E3D) con `Generated = true`. Editarlos en la ficha, moverlos o hacerlos capital los "adopta" (`Generated = false`). Volver a poblar borra solo los generados; generar un mapa con otra malla también.
   - Mismas semillas, mismo mapa: cualquier cambio en las constantes de las etapas cambia los mapas ya generados (los mundos guardados conservan su imagen, pero "Generar" daría otro resultado). `GeneratorTests.KnownMaps_DoNotChange` lo detecta con huellas (SHA-256 de altura redondeada a 9 decimales, bioma y río de cada celda) de tres mapas. Si el cambio es a propósito, se actualiza la huella y se anota acá.
 
-## Estado actual (2026-10-22)
+## Estado actual (2026-11-04)
 
 Compila sin advertencias y funciona (pines, arrastre, zoom, guardado probados).
 
@@ -190,8 +193,12 @@ Resuelto:
 
 - 2026-10-22: detalle de la tierra: sombreado de relieve y símbolos de atlas (pedido del autor: la versión pintada "se ve muy simple y sosa"). Revisado en un visor aparte (Edge sin ventana dejó de generar imágenes; se usó un servidor mínimo de Node en el puerto 5099 y la vista previa) y en la app con el mapa poblado. Ajustes tras la revisión: montañas en tres perfiles y más juntas (todas iguales y separadas parecían un papel tapiz), árboles más grandes (se leían como puntos), sombreado en el color en vez de una capa (de 6,0 a 4,7 s en el navegador).
 
+- 2026-11-04: publicación en GitHub Pages preparada (pedido por el autor, después de la explicación paso a paso). Probado antes del push: `dotnet publish` en Release sin advertencias de recorte (9,3 MB, 2,9 MB comprimido), servido bajo `/didactic-maps/` con la ruta base cambiada: carga sin errores, generar con Atlas tarda 0,7 a 1,1 s (4,7 s en Debug), poblar 0,2 s, fichas con enlaces, vista de reinos, y todo sobrevive a recargar (el recorte de código no rompió el guardado en JSON). Pruebas en Release: 70 pasan. README con insignia del flujo, enlace "Probala acá", captura y sección "Publicación".
+
 Pendiente:
 
+- Publicación: después del primer push, confirmar que el flujo termina en verde, que el sitio abre y que la insignia del README se ve. Si algo falla, el registro está en la pestaña Actions del repositorio.
+- La interfaz se congela mientras genera: en Release son alrededor de 1 s, contra 4,7 en Debug; volver a evaluar AOT o generación por etapas con la versión publicada.
 - Próximo paso posible: importar mapa de alturas (opción C).
 - Lagos dibujados muy hondos (casi 1900 m en la prueba): el agua tiene el doble de fuerza y llega al fondo de la escala. Si molesta, limitar su profundidad.
 - Costas muy recortadas: la costa dibujada se corre hasta 1,5 celdas, así que un puerto o una aldea junto al mar puede quedar apenas en el agua en el dibujo (el mundo no cambió; se puede arrastrar el pin).
