@@ -33,6 +33,15 @@ public class MapProject
 
     /// <summary>Fichas del mundo: de pines, de reinos y sueltas (ver WikiEntry).</summary>
     public List<WikiEntry> Entries { get; set; } = new();
+
+    /// <summary>Caminos entre lugares (ver Route).</summary>
+    public List<Route> Routes { get; set; } = new();
+
+    /// <summary>
+    /// Ancho del mapa en kilómetros: la escala para medir distancias y días de viaje. Se puede
+    /// cambiar en el proyecto; 1200 km es el ancho de un continente mediano.
+    /// </summary>
+    public double MapWidthKm { get; set; } = 1200;
 }
 
 /// <summary>

@@ -1,0 +1,105 @@
+@inject ProjectService Store
+
+@* Caminos y distancias desde un lugar (en su ficha): los caminos que salen de acá, y para
+   cualquier otro lugar, medir la distancia o trazar un camino nuevo. *@
+<section class="pin-travel" aria-label="Caminos y distancias">
+    <h3>Caminos</h3>
+
+    @{
+        var routes = Store.RoutesOf(Pin.Id).ToList();
+    }
+    @if (routes.Count == 0)
+    {
+        <p class="muted">Ningún camino sale de acá.</p>
+    }
+    else
+    {
+        <ul class="travel-list">
+            @foreach (var route in routes)
+            {
+                var other = OtherEnd(route);
+                var trip = Store.EstimateRoute(route);
+                <li @key="route.Id">
+                    <button type="button" class="wiki-link" @onclick="() => OnOpenRoute.InvokeAsync(route.Id)">a @other?.Title</button>
+                    <span class="muted">· @Route.NameOf(route.Kind)@(trip is null ? "" : $" · {RouteSheet.Km(trip.Km)} · {RouteSheet.Days(trip.WalkDays)} a pie")</span>
+                </li>
+            }
+        </ul>
+    }
+
+    <label class="field">
+        <span>Otro lugar</span>
+        <select @bind="_otherId" @bind:after="() => _result = null">
+            <option value="@Guid.Empty">Elegí un lugar</option>
+            @foreach (var pin in Others())
+            {
+                <option value="@pin.Id">@pin.Title</option>
+            }
+        </select>
+    </label>
+
+    <div class="btn-row">
+        <button type="button" class="btn small" disabled="@(_otherId == Guid.Empty)" @onclick="Measure">Medir</button>
+        <button type="button" class="btn small" disabled="@(_otherId == Guid.Empty)" @onclick="AddRoute">Trazar camino</button>
+    </div>
+
+    @if (_result is not null)
+    {
+        <p class="hint" role="status">@_result</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public MapPin Pin { get; set; } = default!;
+
+    /// <summary>Abrir la ficha de un camino.</summary>
+    [Parameter] public EventCallback<Guid> OnOpenRoute { get; set; }
+
+    private Guid _otherId;
+    private string? _result;
+    private Guid _shownPin;
+
+    protected override void OnParametersSet()
+    {
+        // Otro lugar elegido en el mapa: se empieza de cero.
+        if (_shownPin != Pin.Id)
+        {
+            _shownPin = Pin.Id;
+            _otherId = Guid.Empty;
+            _result = null;
+        }
+    }
+
+    private MapPin? OtherEnd(Route route) =>
+        Store.Project.Pins.FirstOrDefault(p => p.Id == (route.FromPinId == Pin.Id ? route.ToPinId : route.FromPinId));
+
+    // Los demás lugares, del más cercano al más lejano: lo más probable es medir hasta un vecino.
+    private IEnumerable<MapPin> Others() =>
+        Store.Project.Pins.Where(p => p.Id != Pin.Id)
+            .OrderBy(p => Math.Pow(p.X - Pin.X, 2) + Math.Pow((p.Y - Pin.Y) * MapGenerator.Height / MapGenerator.Width, 2));
+
+    private void Measure()
+    {
+        if (Store.Project.Pins.FirstOrDefault(p => p.Id == _otherId) is not { } other) return;
+
+        var (straight, byLand) = Store.Measure(Pin, other);
+        _result = byLand is null
+            ? $"Hasta {other.Title}: {RouteSheet.Km(straight)} en línea recta. No hay camino por tierra (otra isla o un lugar en el agua)."
+            : $"Hasta {other.Title}: {RouteSheet.Km(straight)} en línea recta; por tierra {RouteSheet.Km(byLand.Km)}, " +
+              $"{RouteSheet.Days(byLand.WalkDays)} a pie, {RouteSheet.Days(byLand.HorseDays)} a caballo y {RouteSheet.Days(byLand.CartDays)} en carreta.";
+    }
+
+    private void AddRoute()
+    {
+        if (Store.Project.Pins.FirstOrDefault(p => p.Id == _otherId) is not { } other) return;
+
+        if (Store.RouteBetween(Pin.Id, other.Id) is not null)
+        {
+            _result = $"Ya hay un camino hasta {other.Title}.";
+            return;
+        }
+        _result = Store.AddRoute(Pin.Id, other.Id) is not null
+            ? $"Camino trazado hasta {other.Title}."
+            : $"No hay camino por tierra hasta {other.Title} (otra isla o un lugar en el agua).";
+    }
+}

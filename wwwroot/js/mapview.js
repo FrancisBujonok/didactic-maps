@@ -144,6 +144,9 @@ export function init(viewport, world, dotnet) {
   listen(viewport, 'pointerdown', (e) => {
     if (e.button !== 0 && e.button !== 1) return; // izquierdo o rueda
     const pinEl = e.button === 0 ? e.target.closest('.pin') : null;
+    // Un camino (su franja de clic solo recibe el mouse en modo Navegar, ver app.css). Arrastrar
+    // sobre él mueve el mapa igual; un clic sin arrastre abre su ficha.
+    const routeEl = e.button === 0 && !pinEl ? e.target.closest('[data-route-id]') : null;
 
     // Shift + arrastrar en el modo "Ver celdas" pinta la selección en vez de mover el mapa.
     // El modo se sabe por la clase que Blazor le pone al visor.
@@ -168,6 +171,7 @@ export function init(viewport, world, dotnet) {
     drag = {
       kind: erasing ? 'erase' : sketching ? 'sketch' : pinEl ? 'pin' : painting ? 'paint' : 'pan',
       points,
+      routeId: routeEl ? routeEl.dataset.routeId : null,
       lastX: e.clientX,
       lastY: e.clientY,
       button: e.button,
@@ -238,6 +242,11 @@ export function init(viewport, world, dotnet) {
       drawLive(null);
       // Al menos 3 puntos (6 números): C# cierra la isla, la simplifica y descarta garabatos.
       if (d.points.length >= 6) dotnet.invokeMethodAsync('OnSketchStroke', d.points);
+      return;
+    }
+
+    if (!d.moved && d.button === 0 && d.routeId) {
+      dotnet.invokeMethodAsync('OnRouteClick', d.routeId);
       return;
     }
 

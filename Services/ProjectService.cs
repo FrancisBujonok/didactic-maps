@@ -133,6 +133,21 @@ public class ProjectService
         }
 
         NormalizeEntries(pinIds);
+
+        // Caminos: entre dos pines que existen, distintos, con al menos dos puntos válidos.
+        Project.Routes = (Project.Routes ?? new())
+            .Where(r => r is not null && r.FromPinId != r.ToPinId && pinIds.Contains(r.FromPinId) && pinIds.Contains(r.ToPinId))
+            .Where(r => r.Points is { Length: >= 4 } && r.Points.Length % 2 == 0 && r.Points.All(v => !double.IsNaN(v)))
+            .ToList();
+        foreach (var route in Project.Routes)
+        {
+            route.Points = route.Points.Select(v => Math.Clamp(v, 0, 1)).ToArray();
+            if (!Enum.IsDefined(route.Kind)) route.Kind = RouteKind.Road;
+        }
+
+        // Escala: un número razonable (proyectos de antes no la traen y quedan en 1200).
+        if (double.IsNaN(Project.MapWidthKm) || Project.MapWidthKm <= 0) Project.MapWidthKm = 1200;
+        Project.MapWidthKm = Math.Clamp(Project.MapWidthKm, 10, 100_000);
     }
 
     /// <summary>
@@ -196,6 +211,7 @@ public class ProjectService
         if (Project.Layers.Count <= 1) return; // siempre tiene que quedar al menos una
         Project.Layers.RemoveAll(l => l.Id == id);
         ReleaseEntries(Project.Pins.Where(p => p.LayerId == id).Select(p => p.Id), Array.Empty<Guid>());
+        RemoveRoutesOf(Project.Pins.Where(p => p.LayerId == id).Select(p => p.Id));
         Project.Pins.RemoveAll(p => p.LayerId == id);
         RequestSave();
     }
@@ -246,12 +262,24 @@ public class ProjectService
         pin.X = Math.Clamp(x, 0, 1);
         pin.Y = Math.Clamp(y, 0, 1);
         pin.Generated = false; // el autor lo movió: se conserva al volver a poblar
+
+        // Sus caminos lo siguen: se vuelven a trazar hasta la posición nueva (y quedan adoptados).
+        var moved = false;
+        foreach (var route in RoutesOf(id).ToList())
+        {
+            if (!Retrace(route)) continue;
+            route.Generated = false;
+            moved = true;
+        }
+        if (moved) RoutesChanged?.Invoke();
+
         RequestSave();
     }
 
     public void RemovePin(Guid id)
     {
         ReleaseEntries(new[] { id }, Array.Empty<Guid>());
+        RemoveRoutesOf(new[] { id });
         Project.Pins.RemoveAll(p => p.Id == id);
 
         // Si era la capital de un reino, el reino queda sin capital.
@@ -399,6 +427,7 @@ public class ProjectService
     {
         var removed = Project.Pins.Where(p => p.Generated).Select(p => p.Id).ToHashSet();
         ReleaseEntries(removed, Array.Empty<Guid>());
+        RemoveRoutesOf(removed);
         Project.Pins.RemoveAll(p => removed.Contains(p.Id));
         foreach (var region in Project.Regions.Where(r => r.CapitalPinId is { } id && removed.Contains(id)))
             region.CapitalPinId = null;
@@ -841,6 +870,186 @@ public class ProjectService
         SketchChanged?.Invoke();
     }
 
+    // ------------------------------------------------------------------ caminos
+
+    /// <summary>Se dispara cuando se crea, cambia o borra un camino (el editor los vuelve a dibujar).</summary>
+    public event Action? RoutesChanged;
+
+    /// <summary>Kilómetros por píxel del mapa generado (2000 px de ancho), según el ancho elegido.</summary>
+    public double KmPerPixel => Project.MapWidthKm / MapGenerator.Width;
+
+    // Qué lugares entran en la red de caminos: los principales la forman, los menores se unen
+    // con un sendero. Las capitales cuentan como principales aunque sean de otro tipo.
+    private static readonly string[] MajorKinds = { "Ciudad", "Puerto" };
+    private static readonly string[] MinorKinds = { "Aldea", "Posada", "Fortaleza", "Torre", "Templo" };
+
+    private static (double X, double Y) PinPixel(MapPin pin) => (pin.X * MapGenerator.Width, pin.Y * MapGenerator.Height);
+
+    private static double[] Normalize(List<(double X, double Y)> points) =>
+        points.SelectMany(p => new[] { Math.Clamp(p.X / MapGenerator.Width, 0, 1), Math.Clamp(p.Y / MapGenerator.Height, 0, 1) }).ToArray();
+
+    /// <summary>Recorrido de un camino en píxeles del mapa.</summary>
+    public static List<(double X, double Y)> RoutePixels(Route route) =>
+        Enumerable.Range(0, route.Points.Length / 2)
+            .Select(i => (route.Points[i * 2] * MapGenerator.Width, route.Points[i * 2 + 1] * MapGenerator.Height))
+            .ToList();
+
+    /// <summary>
+    /// Traza la red de caminos entre los lugares del mapa (ver RouteStage). Reemplaza solo los
+    /// caminos generados que el autor no tocó; donde ya hay un camino entre dos lugares, no se
+    /// agrega otro. Un camino entre dos capitales es camino real. Devuelve cuántos se trazaron.
+    /// </summary>
+    public int GenerateRoutes()
+    {
+        if (GetWorld() is not { } world) return 0;
+        Project.Routes.RemoveAll(r => r.Generated);
+
+        var capitals = Project.Regions.Where(r => r.CapitalPinId is not null).Select(r => r.CapitalPinId!.Value).ToHashSet();
+        var pins = Project.Pins
+            .Where(p => capitals.Contains(p.Id) || MajorKinds.Contains(p.Kind) || MinorKinds.Contains(p.Kind))
+            .ToList();
+        var cells = pins.Select(p => world.Mesh.FindCell(p.X * MapGenerator.Width, p.Y * MapGenerator.Height)).ToList();
+        var major = pins.Select(p => capitals.Contains(p.Id) || MajorKinds.Contains(p.Kind)).ToList();
+
+        var count = 0;
+        foreach (var planned in RouteStage.Plan(world, cells, major))
+        {
+            var (from, to) = (pins[planned.From], pins[planned.To]);
+            if (RouteBetween(from.Id, to.Id) is not null) continue;
+
+            var kind = planned.Kind == RouteKind.Road && capitals.Contains(from.Id) && capitals.Contains(to.Id)
+                ? RouteKind.Highway
+                : planned.Kind;
+            Project.Routes.Add(new Route
+            {
+                FromPinId = from.Id,
+                ToPinId = to.Id,
+                Kind = kind,
+                Points = Normalize(RouteStage.PathPoints(world, planned.Cells, PinPixel(from), PinPixel(to))),
+                Generated = true
+            });
+            count++;
+        }
+
+        RoutesEdited();
+        return count;
+    }
+
+    /// <summary>El camino entre dos lugares, en cualquier sentido, o null.</summary>
+    public Route? RouteBetween(Guid a, Guid b) =>
+        Project.Routes.FirstOrDefault(r => (r.FromPinId == a && r.ToPinId == b) || (r.FromPinId == b && r.ToPinId == a));
+
+    /// <summary>Los caminos que salen de un lugar.</summary>
+    public IEnumerable<Route> RoutesOf(Guid pinId) => Project.Routes.Where(r => r.FromPinId == pinId || r.ToPinId == pinId);
+
+    /// <summary>
+    /// Traza un camino nuevo entre dos lugares por el terreno más fácil, aprovechando los caminos
+    /// que ya existen. Devuelve null si no hay camino por tierra (otra isla, un pin en el agua).
+    /// </summary>
+    public Route? AddRoute(Guid fromId, Guid toId, RouteKind kind = RouteKind.Road)
+    {
+        var from = Project.Pins.FirstOrDefault(p => p.Id == fromId);
+        var to = Project.Pins.FirstOrDefault(p => p.Id == toId);
+        if (from is null || to is null || from == to || RouteBetween(fromId, toId) is not null) return null;
+
+        var route = new Route { FromPinId = fromId, ToPinId = toId, Kind = kind };
+        if (!Retrace(route)) return null;
+
+        Project.Routes.Add(route);
+        RoutesEdited();
+        return route;
+    }
+
+    /// <summary>Vuelve a trazar el recorrido de un camino (por ejemplo, si se movió uno de sus lugares).</summary>
+    public bool RecalculateRoute(Route route)
+    {
+        if (!Retrace(route)) return false;
+        route.Generated = false; // el autor lo tocó: se conserva al rehacer los caminos
+        RoutesEdited();
+        return true;
+    }
+
+    private bool Retrace(Route route)
+    {
+        var from = Project.Pins.FirstOrDefault(p => p.Id == route.FromPinId);
+        var to = Project.Pins.FirstOrDefault(p => p.Id == route.ToPinId);
+        if (from is null || to is null || GetWorld() is not { } world) return false;
+
+        var (a, b) = (PinPixel(from), PinPixel(to));
+        var start = world.Mesh.FindCell(a.X, a.Y);
+        var goal = world.Mesh.FindCell(b.X, b.Y);
+        var roads = RoadCells(world, except: route);
+        if (start < 0 || goal < 0 || RouteStage.FindPath(world, start, goal, roads) is not { } path) return false;
+
+        route.Points = Normalize(RouteStage.PathPoints(world, path, a, b));
+        return true;
+    }
+
+    /// <summary>Celdas por las que ya pasa algún camino (para que los nuevos los aprovechen).</summary>
+    private HashSet<int> RoadCells(World world, Route? except = null)
+    {
+        var cells = new HashSet<int>();
+        foreach (var route in Project.Routes.Where(r => r != except))
+        {
+            var hint = -1;
+            foreach (var (x, y) in RoutePixels(route))
+            {
+                hint = world.Mesh.FindCell(x, y, hint);
+                if (hint >= 0) cells.Add(hint);
+            }
+        }
+        return cells;
+    }
+
+    public void RemoveRoute(Guid id)
+    {
+        Project.Routes.RemoveAll(r => r.Id == id);
+        RoutesEdited();
+    }
+
+    /// <summary>Avisa que cambió un camino (tipo) y lo adopta: el autor lo tocó.</summary>
+    public void RouteEdited(Route route)
+    {
+        route.Generated = false;
+        RoutesEdited();
+    }
+
+    /// <summary>Kilómetros y días de un camino, o null si el mapa no es generado.</summary>
+    public TravelEstimate? EstimateRoute(Route route) =>
+        GetWorld() is { } world ? Travel.Estimate(world, RoutePixels(route), KmPerPixel, route.Kind) : null;
+
+    /// <summary>
+    /// Distancia entre dos lugares: en línea recta, y por tierra por el terreno más fácil
+    /// (aprovechando los caminos que hay). ByLand es null si no se puede llegar por tierra.
+    /// </summary>
+    public (double StraightKm, TravelEstimate? ByLand) Measure(MapPin a, MapPin b)
+    {
+        var (pa, pb) = (PinPixel(a), PinPixel(b));
+        var straight = Math.Sqrt(Math.Pow(pb.X - pa.X, 2) + Math.Pow(pb.Y - pa.Y, 2)) * KmPerPixel;
+        if (GetWorld() is not { } world) return (straight, null);
+
+        var start = world.Mesh.FindCell(pa.X, pa.Y);
+        var goal = world.Mesh.FindCell(pb.X, pb.Y);
+        if (start < 0 || goal < 0 || RouteStage.FindPath(world, start, goal, RoadCells(world)) is not { } path)
+            return (straight, null);
+
+        var points = RouteStage.PathPoints(world, path, pa, pb);
+        return (straight, Travel.Estimate(world, points, KmPerPixel, RouteKind.Road));
+    }
+
+    private void RemoveRoutesOf(IEnumerable<Guid> pinIds)
+    {
+        var ids = pinIds.ToHashSet();
+        if (Project.Routes.RemoveAll(r => ids.Contains(r.FromPinId) || ids.Contains(r.ToPinId)) > 0)
+            RoutesChanged?.Invoke();
+    }
+
+    private void RoutesEdited()
+    {
+        RequestSave();
+        RoutesChanged?.Invoke();
+    }
+
     // ----------------------------------------------------------------- poblados
 
     // Color de la capa "Poblados": sepia, distinto de los colores de las capas del autor.
@@ -852,9 +1061,9 @@ public class ProjectService
     /// guardan en el proyecto (no cambian la imagen, así que no hace falta regenerar el mapa).
     /// Reemplaza los pines generados que el autor no tocó; los demás se conservan.
     /// </summary>
-    public (int Places, int Kingdoms) Populate(GeneratorSettings settings)
+    public (int Places, int Kingdoms, int Routes) Populate(GeneratorSettings settings)
     {
-        if (Project.Generator is not { } generator || GetWorld() is not { } world) return (0, 0);
+        if (Project.Generator is not { } generator || GetWorld() is not { } world) return (0, 0, 0);
 
         generator.SettlementSeed = settings.SettlementSeed;
         generator.SettlementDensity = settings.SettlementDensity;
@@ -909,7 +1118,8 @@ public class ProjectService
         }
 
         RegionsChanged(); // redibuja la vista de reinos y guarda
-        return (pins.Count, newKingdoms ? plan.Kingdoms.Count : 0);
+        var routes = GenerateRoutes(); // la red de caminos entre los lugares nuevos (y los del autor)
+        return (pins.Count, newKingdoms ? plan.Kingdoms.Count : 0, routes);
     }
 
     // ------------------------------------------------------------------- vistas

@@ -167,6 +167,8 @@
 
     <div class="btn-row">
         <button class="btn" disabled="@(_busy || Store.Project.Generator is null)" @onclick="PopulateAsync">Poblar mapa</button>
+        <button class="btn" disabled="@(_busy || Store.Project.Generator is null)" @onclick="RetraceRoutesAsync"
+                title="Vuelve a trazar los caminos generados entre los lugares del mapa (los que editaste se conservan)">Rehacer caminos</button>
     </div>
 
     <p class="hint" role="status">
@@ -300,10 +302,10 @@
 
         try
         {
-            var (places, kingdoms) = Store.Populate(_settings);
+            var (places, kingdoms, routes) = Store.Populate(_settings);
             _populateStatus = kingdoms > 0
-                ? $"Se crearon {places} lugares y {kingdoms} reinos."
-                : $"Se crearon {places} lugares.";
+                ? $"Se crearon {places} lugares, {kingdoms} reinos y {routes} caminos."
+                : $"Se crearon {places} lugares y {routes} caminos.";
         }
         finally
         {
@@ -311,6 +313,29 @@
         }
 
         await OnPopulated.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Rehace la red de caminos entre los lugares que hay ahora (por ejemplo, después de agregar
+    /// o mover ciudades a mano). Los caminos que el autor editó o trazó se conservan.
+    /// </summary>
+    private async Task RetraceRoutesAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _populateStatus = "Trazando caminos...";
+        StateHasChanged();
+        await Task.Delay(1);
+
+        try
+        {
+            var count = Store.GenerateRoutes();
+            _populateStatus = count == 1 ? "Se trazó 1 camino." : $"Se trazaron {count} caminos.";
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private SeedRow[] Seeds => new SeedRow[]

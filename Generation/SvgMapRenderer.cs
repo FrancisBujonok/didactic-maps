@@ -323,7 +323,7 @@ public static class SvgMapRenderer
     }
 
     /// <summary>Chaikin para una línea abierta: igual, pero conserva el primer y el último punto.</summary>
-    private static List<(double X, double Y)> SmoothOpen(List<(double X, double Y)> points)
+    internal static List<(double X, double Y)> SmoothOpen(List<(double X, double Y)> points)
     {
         for (var pass = 0; pass < SmoothPasses && points.Count > 2; pass++)
         {

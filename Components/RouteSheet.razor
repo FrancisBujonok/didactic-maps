@@ -1,0 +1,101 @@
+@inject ProjectService Store
+@inject IJSRuntime JS
+
+@* Ficha de un camino, en la hoja flotante: qué une, de qué tipo es, cuánto mide y cuántos
+   días lleva recorrerlo. Se abre con un clic sobre el camino en el mapa. *@
+@if (From is { } from && To is { } to)
+{
+    var trip = Store.EstimateRoute(Route);
+
+    <div class="sheet-head">
+        <h2>@Route.NameOf(Route.Kind)</h2>
+        <button type="button" class="icon-btn" aria-label="Cerrar la ficha" title="Cerrar"
+                @onclick="OnClose"><UiIcon Name="close" /></button>
+    </div>
+    <p class="sheet-meta">@from.Title · @to.Title@(trip is null ? "" : $" · {Km(trip.Km)}")</p>
+
+    <div class="field">
+        <span>Une</span>
+        <p class="field-value">
+            <button type="button" class="wiki-link" @onclick="() => OnOpen.InvokeAsync(WikiTarget.Pin(from.Id))">@from.Title</button>
+            y
+            <button type="button" class="wiki-link" @onclick="() => OnOpen.InvokeAsync(WikiTarget.Pin(to.Id))">@to.Title</button>
+        </p>
+    </div>
+
+    <label class="field">
+        <span>Tipo</span>
+        <select @bind="Route.Kind" @bind:after="() => Store.RouteEdited(Route)">
+            @foreach (var (kind, name) in Route.Kinds)
+            {
+                <option value="@kind">@name</option>
+            }
+        </select>
+    </label>
+
+    @if (trip is not null)
+    {
+        <h3>Viaje</h3>
+        <dl class="facts">
+            <dt>Distancia</dt>
+            <dd>@Km(trip.Km)</dd>
+            <dt>A pie</dt>
+            <dd>@Days(trip.WalkDays)</dd>
+            <dt>A caballo</dt>
+            <dd>@Days(trip.HorseDays)</dd>
+            <dt>En carreta</dt>
+            <dd>@Days(trip.CartDays)</dd>
+        </dl>
+        <p class="hint">Aproximado: las montañas y los bosques frenan; un camino real se recorre más rápido que un sendero.</p>
+    }
+
+    <div class="btn-row">
+        <button type="button" class="btn small" @onclick="Retrace"
+                title="Vuelve a buscar el recorrido más fácil entre los dos lugares">Recalcular recorrido</button>
+    </div>
+    @if (_message is not null)
+    {
+        <p class="hint" role="status">@_message</p>
+    }
+
+    <div class="sheet-foot">
+        <button type="button" class="btn small danger" @onclick="RemoveAsync">Eliminar camino</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Route Route { get; set; } = default!;
+
+    /// <summary>Abrir la ficha de uno de los lugares que une.</summary>
+    [Parameter] public EventCallback<WikiTarget> OnOpen { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string? _message;
+
+    private MapPin? From => Store.Project.Pins.FirstOrDefault(p => p.Id == Route.FromPinId);
+    private MapPin? To => Store.Project.Pins.FirstOrDefault(p => p.Id == Route.ToPinId);
+
+    protected override void OnParametersSet() => _message = null;
+
+    /// <summary>Kilómetros con separador de miles: "1.240 km".</summary>
+    public static string Km(double km) => $"{Math.Round(km):N0} km";
+
+    /// <summary>Días redondeados, en palabras cuando es menos de uno.</summary>
+    public static string Days(double days) => days switch
+    {
+        < 0.75 => "menos de un día",
+        < 1.5 => "1 día",
+        _ => $"{Math.Round(days):N0} días"
+    };
+
+    private void Retrace() =>
+        _message = Store.RecalculateRoute(Route) ? null : "No se encontró un recorrido por tierra entre los dos lugares.";
+
+    private async Task RemoveAsync()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar este camino?")) return;
+        Store.RemoveRoute(Route.Id);
+        await OnClose.InvokeAsync();
+    }
+}

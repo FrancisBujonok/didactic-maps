@@ -39,6 +39,16 @@
                 <input type="text" @bind="Store.Project.Name" @bind:event="oninput" @bind:after="OnDataChanged" />
             </label>
 
+            @* Escala: con ella se miden caminos y distancias en km y días de viaje. *@
+            @if (Store.Project.Generator is not null)
+            {
+                <label class="field">
+                    <span>Ancho del mapa (km)</span>
+                    <input type="number" min="10" max="100000" step="50"
+                           value="@Store.Project.MapWidthKm.ToString(CultureInfo.InvariantCulture)" @onchange="SetMapWidth" />
+                </label>
+            }
+
             <div class="btn-row">
                 <button class="btn" @onclick="LoadImageAsync">Cargar imagen</button>
                 <button class="btn" @onclick="ExportAsync">Exportar</button>
@@ -111,6 +121,10 @@
 
             <label class="check">
                 <input type="checkbox" @bind="_showLabels" /> Etiquetas
+            </label>
+
+            <label class="check">
+                <input type="checkbox" @bind="_showRoutes" /> Caminos
             </label>
 
             <button class="btn small" @onclick="FitAsync">Ajustar a pantalla</button>
@@ -239,6 +253,26 @@
                     </svg>
                 }
 
+                @* Caminos: SVG propio (no del usuario) del tamaño del mapa, debajo de los pines. Cada
+                   camino va tres veces: un halo de papel para leerse sobre cualquier terreno, la
+                   franja ancha invisible que recibe el clic (data-route-id: mapview.js la reconoce y
+                   avisa a OnRouteClick), y la línea punteada, que se marca al pasar el mouse. *@
+                @if (Store.Loaded && _showRoutes && Store.Project.Routes.Count > 0)
+                {
+                    <svg class="routes" viewBox="0 0 @F(MapGenerator.Width) @F(MapGenerator.Height)"
+                         preserveAspectRatio="none" aria-hidden="true">
+                        @foreach (var route in Store.Project.Routes)
+                        {
+                            var d = RoutePath(route);
+                            var kind = route.Kind.ToString().ToLowerInvariant();
+                            var selected = route.Id == _selectedRouteId ? "selected" : "";
+                            <path class="route-halo @kind @selected" d="@d" />
+                            <path class="route-hit" d="@d" data-route-id="@route.Id" />
+                            <path class="route @kind @selected" d="@d" />
+                        }
+                    </svg>
+                }
+
                 @if (Store.Loaded)
                 {
                     // Pines que son capital de algún reino: se calculan una vez por dibujo.
@@ -330,12 +364,12 @@
                             @onclick="() => _selectedPinId = null"><UiIcon Name="close" /></button>
                 </div>
                 <p class="sheet-meta">@PinMeta(selectedPin)</p>
-    
+
                 <label class="field">
                     <span>Título</span>
                     <NameInput @bind-Value="selectedPin.Title" @bind-Value:after="() => OnPinChanged(selectedPin)" />
                 </label>
-    
+
                 @* Tipo: se muestra el actual y, al tocar "Cambiar", la grilla con todos los tipos. *@
                 <div class="field">
                     <span>Tipo</span>
@@ -350,7 +384,7 @@
                         <KindPicker Value="@selectedPin.Kind" ValueChanged="kind => ChangeKind(selectedPin, kind)" />
                     }
                 </div>
-    
+
                 @* Tamaño: la importancia del lugar en el mapa. *@
                 <div class="field">
                     <span id="tamano-pin">Tamaño</span>
@@ -363,7 +397,7 @@
                         }
                     </div>
                 </div>
-    
+
                 <label class="field">
                     <span>Capa</span>
                     <select @bind="selectedPin.LayerId" @bind:after="() => OnPinChanged(selectedPin)">
@@ -373,18 +407,18 @@
                         }
                     </select>
                 </label>
-    
+
                 @* Reino: se calcula por la celda donde está el pin, así que cambia si se lo mueve. *@
                 @if (Store.Project.Generator is not null)
                 {
                     var region = Store.RegionAt(selectedPin);
                     var capitalOf = Store.CapitalOf(selectedPin);
-    
+
                     <div class="field">
                         <span>Reino</span>
                         <p class="field-value">@(region?.Name ?? "Sin reino")</p>
                     </div>
-    
+
                     @if (region is not null)
                     {
                         <label class="check field">
@@ -393,23 +427,32 @@
                             Capital de @region.Name
                         </label>
                     }
-    
+
                     @if (capitalOf is not null && capitalOf != region)
                     {
                         <p class="hint">Es la capital de @capitalOf.Name, pero está fuera de su territorio.</p>
                     }
                 }
-    
+
+                @if (Store.Project.Generator is not null)
+                {
+                    <PinTravel Pin="selectedPin" OnOpenRoute="SelectRoute" />
+                }
+
                 <EntryText Target="WikiTarget.Pin(selectedPin.Id)" OnOpen="OpenTargetAsync" />
-    
+
                 <p class="hint">
                     Posición: @FormatPercent(selectedPin.X) / @FormatPercent(selectedPin.Y).
                     Arrastrá el pin en el mapa para moverlo.
                 </p>
-    
+
                 <div class="sheet-foot">
                     <button class="btn small danger" @onclick="() => DeletePinAsync(selectedPin)">Eliminar pin</button>
                 </div>
+            }
+            else if (SelectedRoute is { } selectedRoute)
+            {
+                <RouteSheet Route="selectedRoute" OnOpen="OpenTargetAsync" OnClose="() => _selectedRouteId = null" />
             }
             else if (OpenSheet is { } sheet)
             {
@@ -452,11 +495,13 @@
     private Guid _activeLayerId;
     private Guid? _selectedPinId;
     private WikiTarget? _sheet;                 // ficha de reino o suelta abierta en la hoja flotante
+    private Guid? _selectedRouteId;             // camino abierto en la hoja flotante
     private readonly HashSet<int> _selectedCells = new(); // índices de celdas de la malla del mundo generado
     private bool _paintAdds;                  // el pincel agrega (true) o quita (false) celdas
     private (double X, double Y) _lastPaint;  // último punto pintado, en píxeles del mapa
     private int _lastPaintCell = -1;
     private bool _showLabels = true;
+    private bool _showRoutes = true;
     private bool _needsFit;
     private string _message = "";
 
@@ -472,6 +517,7 @@
     {
         Store.StatusChanged += OnStatusChanged;
         Store.SketchChanged += OnStatusChanged; // el dibujo cambió: se redibujan las islas
+        Store.RoutesChanged += OnStatusChanged; // un camino nuevo, cambiado o borrado
 
         await Store.InitAsync();
 
@@ -500,6 +546,7 @@
     {
         Store.StatusChanged -= OnStatusChanged;
         Store.SketchChanged -= OnStatusChanged;
+        Store.RoutesChanged -= OnStatusChanged;
 
         if (_mapJs is not null)
         {
@@ -519,6 +566,7 @@
     public Task OnMapClick(double x, double y) => InvokeAsync(() =>
     {
         _sheet = null; // un clic en el mapa cierra la ficha abierta, como deselecciona un pin
+        _selectedRouteId = null;
 
         if (_mode == Mode.AddPin)
         {
@@ -696,7 +744,7 @@
     /// queda entero a la vista.
     /// </summary>
     private bool HasSheet =>
-        SelectedPin is not null || OpenSheet is not null ||
+        SelectedPin is not null || OpenSheet is not null || SelectedRoute is not null ||
         (_selectedCells.Count > 0 && Store.WorldReady) || _mode == Mode.Inspect;
 
     /// <summary>Línea de datos bajo el nombre del pin: "Ciudad · Lania Alta · capital".</summary>
@@ -730,12 +778,40 @@
         {
             _sheet = target;
             _selectedPinId = null;
+            _selectedRouteId = null;
             _selectedCells.Clear();
         }
 
         if (target.Kind != WikiTargetKind.Entry)
             await CenterOnAsync(target);
     }
+
+    // ------------------------------------------------------------ caminos
+
+    /// <summary>Camino abierto en la hoja flotante, si todavía existe.</summary>
+    private Route? SelectedRoute =>
+        _selectedRouteId is { } id ? Store.Project.Routes.FirstOrDefault(r => r.Id == id) : null;
+
+    /// <summary>Abre la ficha de un camino (desde la lista de caminos de un lugar).</summary>
+    private void SelectRoute(Guid id)
+    {
+        _selectedRouteId = id;
+        _selectedPinId = null;
+        _sheet = null;
+        _selectedCells.Clear();
+    }
+
+    /// <summary>mapview.js avisa de un clic sobre un camino (en modo Navegar).</summary>
+    [JSInvokable]
+    public Task OnRouteClick(string id) => InvokeAsync(() =>
+    {
+        if (Guid.TryParse(id, out var routeId) && _mode == Mode.Navigate)
+            SelectRoute(routeId);
+        StateHasChanged();
+    });
+
+    // Recorrido de un camino como path de SVG, en las coordenadas del viewBox (el tamaño del mapa).
+    private static string RoutePath(Route route) => IslandPath(route.Points, closed: false);
 
     private void ShowLayerOf(MapPin pin)
     {
@@ -800,6 +876,17 @@
 
     private void OnDataChanged() => Store.RequestSave();
 
+    // Ancho del mapa en km: se acepta con coma o punto decimal y se acota a un rango razonable.
+    private void SetMapWidth(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var km) && km > 0)
+        {
+            Store.Project.MapWidthKm = Math.Clamp(km, 10, 100_000);
+            Store.RequestSave();
+        }
+    }
+
     // Un cambio en la ficha del pin también lo "adopta": si era generado, deja de serlo y se
     // conserva al volver a poblar el mapa.
     private void OnPinChanged(MapPin pin)
@@ -854,6 +941,7 @@
     {
         _selectedPinId = id;
         _sheet = null;
+        _selectedRouteId = null;
         _selectedCells.Clear();
         _choosingKind = false;
 
